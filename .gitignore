@@ -20,3 +20,5 @@ data/raw/*
 # OS
 .DS_Store
 Thumbs.db
+data/processed/
+.venv_cp312/

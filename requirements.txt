@@ -1,0 +1,16 @@
+# Data handling and visualization
+numpy>=1.26,<3.0
+pandas>=2.2,<3.0
+matplotlib>=3.8,<4.0
+
+# Jupyter notebook environment
+jupyter>=1.0,<2.0
+ipykernel>=6.29,<8.0
+
+# Forecasting baselines and evaluation
+scikit-learn>=1.5,<2.0
+statsmodels>=0.14,<1.0
+
+# Machine-learning models we may compare
+lightgbm>=4.5,<5.0
+xgboost>=2.1,<4.0

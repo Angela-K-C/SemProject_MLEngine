@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.env
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data (raw)
+data/raw/
+data/raw/*
+*.csv
+
+# Large files
+*.zip
+*.tar
+*.gz
+
+# OS
+.DS_Store
+Thumbs.db

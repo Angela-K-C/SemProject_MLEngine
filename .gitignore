@@ -12,6 +12,11 @@ data/raw/
 data/raw/*
 *.csv
 
+/outputs
+outputs/*
+outputs
+
+
 # Large files
 *.zip
 *.tar

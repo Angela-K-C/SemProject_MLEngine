@@ -2,25 +2,94 @@
 
 This project explores the [M5 Forecasting – Accuracy](https://www.kaggle.com/competitions/m5-forecasting-accuracy) retail sales dataset and builds next-day LightGBM demand forecasts for California FOODS items. It started as a 500-series mixed-category sample and has since been narrowed to CA_1/FOODS, moved to short-horizon lags and a Tweedie objective, and used to test several modelling variants (hurdle, bucketed, pooled). The results are summarised below.
 
-## Results so far
+## Modelling journey
 
-All models predict **one day ahead** and are scored on the same chronological windows: a development validation window (`d_1886`–`d_1913`) and a later backtest (`d_1914`–`d_1941`, refit on all labelled history before it). The naive baseline is "tomorrow looks like today" (`sales_lag_1`).
+The model went through six stages. Each stage changed one thing and was scored against the stage before it, so the gains and the dead ends are both on record. **Stage 3 is the best model so far**, and it is marked below.
 
-| Approach | Notebook | Dev RMSE | Dev MAE | Backtest RMSE | Backtest MAE |
-| --- | --- | --- | --- | --- | --- |
-| **Single LightGBM, Tweedie (CA_1/FOODS)** | `LightGBM_BaseLocal` | **2.356** | **1.308** | **2.377** | **1.377** |
-| Binary hurdle (zero vs. non-zero, then regress) | `HurdleModel_CA1Foods` | 2.441 | 1.358 | 2.456 | 1.423 |
-| Bucketed range model (classify bucket, regress within) | `BucketedDemandModel_CA1Foods` | 2.584 | 1.360 | 2.598 | 1.426 |
-| Pooled LightGBM, Tweedie (CA_1–CA_4), scored on CA_1 rows | `PooledModel_CA_FOODS` | 2.370 | 1.305 | 2.377 | 1.371 |
+All CA_1/FOODS numbers use the same chronological windows: a development validation window (`d_1886`–`d_1913`) and a later backtest (`d_1914`–`d_1941`, refit on all labelled history before it). Lower is better.
 
-Key takeaways:
+### Stage 1: LightGBM baseline on a mixed 500-series sample
 
-- **Short-horizon lags (1/7/14/21 days) plus a Tweedie objective** cut error by about 9–14% over the earlier 28-day-lag, L2 setup on the same CA_1/FOODS scope.
-- **Extra classification structure did not help.** Both the hurdle and bucketed models were worse than the single Tweedie model, which already handles the zero-heavy, right-skewed demand directly.
-- **Pooling the four California stores did not help CA_1.** On CA_1 rows the pooled model matches the CA_1-only model (RMSE flat or slightly worse, MAE better by 0.003–0.006, which is within noise) while training on roughly four times the rows. Across all four stores the pooled model scores RMSE 2.283 (dev) and 2.285 (backtest) against 3.116 and 3.088 for the naive baseline. Per-store error tracks sales volume: CA_3 is highest (RMSE 2.831) and CA_4 lowest (1.549).
-- Keep the CA_1-only model if CA_1 is the target. Use the pooled model if one model for all four stores is preferred.
+[`LightGBM_BaseColab`](notebooks/LightGBM_BaseColab.ipynb) / [`LightGBM_BaseLocal`](notebooks/LightGBM_BaseLocal.ipynb) began with a 500-series sample across all stores and categories. It used 28-day-embargoed lag and rolling features, which match the M5 competition's 28-day-ahead setting, and a standard L2 objective, scored against a naive lag-28 baseline. LightGBM reached RMSE 1.832 and beat the baseline by about 28–31%. The 500-series cap was needed to keep the `pd.melt` reshaping within memory.
 
-Each notebook ends with its own conclusions section.
+### Stage 2: Scope down to CA_1/FOODS and compare models
+
+Narrowing to one store and one dense category (1,437 series) gave a cleaner, more realistic target, and building the lags on the wide matrix instead of using `pd.melt` let every series run in one pass without the cap.
+
+| Model (28-day lags, L2) | Dev RMSE | Dev MAE | Backtest RMSE | Backtest MAE |
+| --- | --- | --- | --- | --- |
+| Naive lag-28 baseline | 3.386 | | | |
+| Ridge | 2.689 | | | |
+| Random Forest | 2.592 | | | |
+| **LightGBM** | **2.591** | **1.454** | **2.751** | **1.506** |
+
+- The raw error went *up* against Stage 1, but that is a scale effect: CA_1/FOODS sells 2.26 units/day against 1.23 for the old sample. Scale-adjusted, it is better (WAPE 66.7% vs. 93.8%).
+- **Model choice mattered far less than features.** LightGBM, Random Forest and Ridge landed within about 4% of each other, so the features carry most of the signal.
+
+### Stage 3: Short-horizon lags and a Tweedie objective (best model so far)
+
+Two changes: next-day lags (1/7/14/21 days) replaced the 28-day-embargoed ones, and the objective switched from L2 to Tweedie, which suits zero-heavy, right-skewed unit sales. The baseline became "tomorrow looks like today" (`sales_lag_1`, RMSE 3.194).
+
+| Metric | Stage 2 (28-day lags, L2) | **Stage 3 (1-day lags, Tweedie)** | Change |
+| --- | --- | --- | --- |
+| Dev RMSE | 2.591 | **2.356** | −9.1% |
+| Dev MAE | 1.454 | **1.308** | −10.0% |
+| Backtest RMSE | 2.751 | **2.377** | −13.6% |
+| Backtest MAE | 1.506 | **1.377** | −8.6% |
+
+- **Recency of the lag features was the biggest lever tried.** It gave a larger gain than any change of model or architecture, before or since.
+- The gain over the naive baseline widened to about 26% RMSE even though the lag-1 baseline is stronger than lag-28.
+- Trade-off: this only makes sense if the app needs next-day forecasts. The 28-day-ahead design in Stage 2 remains the right one for a month-ahead view.
+
+### Stage 4: Hurdle model, classify first and then regress (no gain)
+
+[`HurdleModel_CA1Foods`](notebooks/HurdleModel_CA1Foods.ipynb) split the problem in two. A classifier predicts whether an item sells at all, and a regressor, trained only on non-zero days, predicts how many.
+
+| Metric | Stage 3 single model | Stage 4 hurdle | Change |
+| --- | --- | --- | --- |
+| Dev RMSE | **2.356** | 2.441 | +3.6% (worse) |
+| Backtest RMSE | **2.377** | 2.456 | +3.3% (worse) |
+
+The classifier was only 73.8% accurate (ROC-AUC 0.83), so roughly one day in four got a hard wrong zero/non-zero call. Removing the zeros did not make the regressor's job easier either, because Tweedie was already handling the zero spike.
+
+### Stage 5: Bucketed range model (worse again)
+
+[`BucketedDemandModel_CA1Foods`](notebooks/BucketedDemandModel_CA1Foods.ipynb) extended the idea to a 4-class demand-range classifier with one regressor per non-zero bucket.
+
+| Metric | Stage 3 single model | Stage 4 hurdle | Stage 5 bucketed |
+| --- | --- | --- | --- |
+| Dev RMSE | **2.356** | 2.441 | 2.584 |
+| Backtest RMSE | **2.377** | 2.456 | 2.598 |
+
+Classification accuracy fell to 59%, and the "medium" bucket was nearly unrecoverable (F1 0.09). Each extra class boundary misroutes more rows to the wrong specialist, so the ranking is single model > hurdle > bucketed > naive baseline. **Adding classification structure made things steadily worse.** One untried idea is to blend the regressors by the full predicted bucket probabilities instead of hard-routing each row.
+
+### Stage 6: Pool all four California stores (matches Stage 3, no gain on CA_1)
+
+[`PooledModel_CA_FOODS`](notebooks/PooledModel_CA_FOODS.ipynb) trained one Tweedie LightGBM on CA_1–CA_4 FOODS (5,748 series), with the same features as Stage 3.
+
+| Evaluated on CA_1 rows | Dev RMSE / MAE | Backtest RMSE / MAE |
+| --- | --- | --- |
+| **Stage 3, CA_1-only model** | **2.356** / 1.308 | **2.377** / 1.377 |
+| Stage 6, pooled model | 2.370 / **1.305** | **2.377** / **1.371** |
+
+RMSE is flat or slightly worse and MAE is better by only 0.003–0.006, which is within noise, while the pooled model trains on about four times the rows. Across all four stores it scores RMSE 2.283 (dev) and 2.285 (backtest) against 3.116 and 3.088 for the naive baseline. Error tracks store volume: CA_3 is highest (RMSE 2.831) and CA_4 lowest (1.549).
+
+### Where we landed
+
+| Stage | Change | Result |
+| --- | --- | --- |
+| 1 | Mixed 500-series sample, lag-28, L2 | Starting point |
+| 2 | Scope to CA_1/FOODS, compare models | Better once scale-adjusted; features matter more than model |
+| **3** | **1-day lags + Tweedie objective** | **Best: dev RMSE 2.356, backtest RMSE 2.377** |
+| 4 | Hurdle (classify, then regress) | Worse by about 3–4% |
+| 5 | Bucketed range model | Worse by about 10% |
+| 6 | Pool four California stores | Ties Stage 3 on CA_1 |
+
+- **The best model is Stage 3**: a single Tweedie LightGBM with short-horizon lags. Use the CA_1-only version if CA_1 is the target. Use the Stage 6 pooled model if you want one model for all four stores, since it is competitive on each store and cheaper to maintain than four separate ones.
+- The two big lessons were that **feature recency beat every change of model or architecture**, and that **a well-matched objective (Tweedie) beat added structure** (hurdle and buckets).
+- These conclusions are for FOODS, the densest category. Household and Hobbies are far more intermittent and need separate validation.
+
+Each notebook ends with its own detailed conclusions section.
 
 ## Project contents
 

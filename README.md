@@ -4,7 +4,7 @@ This project explores the [M5 Forecasting – Accuracy](https://www.kaggle.com/c
 
 ## Modelling journey
 
-The model went through six stages. Each stage changed one thing and was scored against the stage before it, so the gains and the dead ends are both on record. **Stage 3 is the best model so far**, and it is marked below.
+The model went through seven stages. Each stage changed one thing and was scored against the stage before it, so the gains and the dead ends are both on record. **Stage 3 is the best model so far**, and it is marked below.
 
 All CA_1/FOODS numbers use the same chronological windows: a development validation window (`d_1886`–`d_1913`) and a later backtest (`d_1914`–`d_1941`, refit on all labelled history before it). Lower is better.
 
@@ -74,6 +74,22 @@ Classification accuracy fell to 59%, and the "medium" bucket was nearly unrecove
 
 RMSE is flat or slightly worse and MAE is better by only 0.003–0.006, which is within noise, while the pooled model trains on about four times the rows. Across all four stores it scores RMSE 2.283 (dev) and 2.285 (backtest) against 3.116 and 3.088 for the naive baseline. Error tracks store volume: CA_3 is highest (RMSE 2.831) and CA_4 lowest (1.549).
 
+### Stage 7: Richer sales and price features (marginal gain)
+
+[`EnrichedFeatures_CA1Foods`](notebooks/EnrichedFeatures_CA1Foods.ipynb) kept the Stage 3 model and changed only the inputs, since feature recency had been the biggest lever. Two feature families were tested separately and together:
+
+- **Sales features (11):** lag-2, lag-3 and lag-28; 28-day rolling mean/std; days since the last sale; rolling zero-share and rolling max over 7 and 28 days; and a 4-week same-weekday average.
+- **Price dynamics (5):** week-over-week price change, weeks since the last price change, and price relative to the item's own mean, its highest price so far, and its department that week.
+
+| Feature set | Dev RMSE / MAE | Backtest RMSE / MAE |
+| --- | --- | --- |
+| A. Baseline features (31) | 2.354 / 1.308 | 2.375 / 1.376 |
+| B. + sales features | 2.347 / 1.303 | 2.376 / 1.372 |
+| C. + price features | 2.355 / 1.308 | 2.375 / 1.377 |
+| **D. + both (47 features)** | **2.345 / 1.298** | **2.373 / 1.369** |
+
+Run D is the best by a hair: about 0.4% lower dev RMSE and 0.7% lower dev MAE than Stage 3, and about 0.1% lower backtest RMSE, which is not distinguishable from run-to-run variation. The sales features account for nearly all of it. The price features added nothing, because FOODS prices rarely change (the median item has had the same price for 56 weeks). `days_since_last_sale` carries about 12% of the model's gain, but the existing rolling means already capture most of the same signal, and `rolling_mean_7` alone is about 60% of total gain. The baseline features were already close to saturating what this model can extract from the sales history, so this is a useful negative result that points toward tuning, hierarchical aggregates and ensembling instead.
+
 ### Where we landed
 
 | Stage | Change | Result |
@@ -84,9 +100,11 @@ RMSE is flat or slightly worse and MAE is better by only 0.003–0.006, which is
 | 4 | Hurdle (classify, then regress) | Worse by about 3–4% |
 | 5 | Bucketed range model | Worse by about 10% |
 | 6 | Pool four California stores | Ties Stage 3 on CA_1 |
+| 7 | Richer sales and price features | Marginal: about 0.4% better dev RMSE, within noise on the backtest |
 
-- **The best model is Stage 3**: a single Tweedie LightGBM with short-horizon lags. Use the CA_1-only version if CA_1 is the target. Use the Stage 6 pooled model if you want one model for all four stores, since it is competitive on each store and cheaper to maintain than four separate ones.
+- **The best model is Stage 3**: a single Tweedie LightGBM with short-horizon lags. Stage 7's extra features edge it by a margin too small to call a real improvement. Use the CA_1-only version if CA_1 is the target. Use the Stage 6 pooled model if you want one model for all four stores, since it is competitive on each store and cheaper to maintain than four separate ones.
 - The two big lessons were that **feature recency beat every change of model or architecture**, and that **a well-matched objective (Tweedie) beat added structure** (hurdle and buckets).
+- The remaining untried levers are tuning the Tweedie parameters, hierarchical aggregate features, and ensembling.
 - These conclusions are for FOODS, the densest category. Household and Hobbies are far more intermittent and need separate validation.
 
 Each notebook ends with its own detailed conclusions section.
@@ -99,6 +117,7 @@ Each notebook ends with its own detailed conclusions section.
 | [`notebooks/LightGBM_BaseColab.ipynb`](notebooks/LightGBM_BaseColab.ipynb) | Colab version of the same workflow. Mounts Google Drive for the data. |
 | [`notebooks/HurdleModel_CA1Foods.ipynb`](notebooks/HurdleModel_CA1Foods.ipynb) | Two-stage hurdle model (classify sale vs. no sale, regress the non-zero magnitude), compared against the single model. |
 | [`notebooks/BucketedDemandModel_CA1Foods.ipynb`](notebooks/BucketedDemandModel_CA1Foods.ipynb) | Multi-class demand-range classifier with one regressor per non-zero bucket. |
+| [`notebooks/EnrichedFeatures_CA1Foods.ipynb`](notebooks/EnrichedFeatures_CA1Foods.ipynb) | Tests richer short-horizon sales features and price-dynamics features on the Stage 3 model, as a four-run ablation (baseline, +sales, +price, +both). |
 | [`notebooks/PooledModel_CA_FOODS.ipynb`](notebooks/PooledModel_CA_FOODS.ipynb) | One Tweedie LightGBM trained on all four California stores' FOODS items (5,748 series), with per-store and CA_1 comparisons. |
 | [`notebooks/Dataset_Exploration.ipynb`](notebooks/Dataset_Exploration.ipynb), [`notebooks/Dataset_Exploration_Local.ipynb`](notebooks/Dataset_Exploration_Local.ipynb) | Short dataset-exploration notebooks (Colab and local) with no modelling. |
 | [`scripts/preprocess_m5.py`](scripts/preprocess_m5.py) | Batch feature preparation for the full dataset (see the note below). |

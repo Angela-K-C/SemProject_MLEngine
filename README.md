@@ -1,19 +1,44 @@
 # M5 Retail Demand Forecasting
 
-This project explores the [M5 Forecasting – Accuracy](https://www.kaggle.com/competitions/m5-forecasting-accuracy) retail sales dataset and builds LightGBM demand forecasts. It includes two notebook workflows: a Google Colab version and a local VS Code version. It also includes a batch preprocessing script for preparing a larger model-ready dataset.
+This project explores the [M5 Forecasting – Accuracy](https://www.kaggle.com/competitions/m5-forecasting-accuracy) retail sales dataset and builds next-day LightGBM demand forecasts for California FOODS items. It started as a 500-series mixed-category sample and has since been narrowed to CA_1/FOODS, moved to short-horizon lags and a Tweedie objective, and used to test several modelling variants (hurdle, bucketed, pooled). The results are summarised below.
+
+## Results so far
+
+All models predict **one day ahead** and are scored on the same chronological windows: a development validation window (`d_1886`–`d_1913`) and a later backtest (`d_1914`–`d_1941`, refit on all labelled history before it). The naive baseline is "tomorrow looks like today" (`sales_lag_1`).
+
+| Approach | Notebook | Dev RMSE | Dev MAE | Backtest RMSE | Backtest MAE |
+| --- | --- | --- | --- | --- | --- |
+| **Single LightGBM, Tweedie (CA_1/FOODS)** | `LightGBM_BaseLocal` | **2.356** | **1.308** | **2.377** | **1.377** |
+| Binary hurdle (zero vs. non-zero, then regress) | `HurdleModel_CA1Foods` | 2.441 | 1.358 | 2.456 | 1.423 |
+| Bucketed range model (classify bucket, regress within) | `BucketedDemandModel_CA1Foods` | 2.584 | 1.360 | 2.598 | 1.426 |
+| Pooled LightGBM, Tweedie (CA_1–CA_4), scored on CA_1 rows | `PooledModel_CA_FOODS` | 2.370 | 1.305 | 2.377 | 1.371 |
+
+Key takeaways:
+
+- **Short-horizon lags (1/7/14/21 days) plus a Tweedie objective** cut error by about 9–14% over the earlier 28-day-lag, L2 setup on the same CA_1/FOODS scope.
+- **Extra classification structure did not help.** Both the hurdle and bucketed models were worse than the single Tweedie model, which already handles the zero-heavy, right-skewed demand directly.
+- **Pooling the four California stores did not help CA_1.** On CA_1 rows the pooled model matches the CA_1-only model (RMSE flat or slightly worse, MAE better by 0.003–0.006, which is within noise) while training on roughly four times the rows. Across all four stores the pooled model scores RMSE 2.283 (dev) and 2.285 (backtest) against 3.116 and 3.088 for the naive baseline. Per-store error tracks sales volume: CA_3 is highest (RMSE 2.831) and CA_4 lowest (1.549).
+- Keep the CA_1-only model if CA_1 is the target. Use the pooled model if one model for all four stores is preferred.
+
+Each notebook ends with its own conclusions section.
 
 ## Project contents
 
 | File or folder | Purpose |
 | --- | --- |
-| [`LightGBM_BaseColab.ipynb`](LightGBM_BaseColab.ipynb) | Colab workflow with data understanding, EDA, sampled LightGBM training, a lag-28 baseline, and optional Ridge and Random Forest comparisons. |
-| [`notebooks/LightGBM_BaseLocal.ipynb`](notebooks/LightGBM_BaseLocal.ipynb) | Local VS Code/Jupyter version of the EDA and model experiments. Reads data from the project’s `data/raw/` folder. |
-| [`training_lightGB.ipynb`](training_lightGB.ipynb) | Earlier Colab training experiment retained for reference. |
-| [`scripts/preprocess_m5.py`](scripts/preprocess_m5.py) | Batch-oriented feature preparation for development validation, a later backtest, and competition forecast inputs. |
+| [`notebooks/LightGBM_BaseLocal.ipynb`](notebooks/LightGBM_BaseLocal.ipynb) | Local EDA plus the main CA_1/FOODS model: short-horizon lags, Tweedie LightGBM, naive lag-1 baseline, and optional Ridge and Random Forest comparisons. Reads data from `data/raw/`. |
+| [`notebooks/LightGBM_BaseColab.ipynb`](notebooks/LightGBM_BaseColab.ipynb) | Colab version of the same workflow. Mounts Google Drive for the data. |
+| [`notebooks/HurdleModel_CA1Foods.ipynb`](notebooks/HurdleModel_CA1Foods.ipynb) | Two-stage hurdle model (classify sale vs. no sale, regress the non-zero magnitude), compared against the single model. |
+| [`notebooks/BucketedDemandModel_CA1Foods.ipynb`](notebooks/BucketedDemandModel_CA1Foods.ipynb) | Multi-class demand-range classifier with one regressor per non-zero bucket. |
+| [`notebooks/PooledModel_CA_FOODS.ipynb`](notebooks/PooledModel_CA_FOODS.ipynb) | One Tweedie LightGBM trained on all four California stores' FOODS items (5,748 series), with per-store and CA_1 comparisons. |
+| [`notebooks/Dataset_Exploration.ipynb`](notebooks/Dataset_Exploration.ipynb), [`notebooks/Dataset_Exploration_Local.ipynb`](notebooks/Dataset_Exploration_Local.ipynb) | Short dataset-exploration notebooks (Colab and local) with no modelling. |
+| [`scripts/preprocess_m5.py`](scripts/preprocess_m5.py) | Batch feature preparation for the full dataset (see the note below). |
 | [`requirements.txt`](requirements.txt) | Python dependencies for the notebooks and preprocessing script. |
-| `reports/` | EDA figures, tables, and written findings generated by the local notebook. |
-| `data/raw/` | Original M5 CSV files. This directory is not included in Git. |
-| `data/processed/` | Generated Parquet feature sets and reports. This directory is not included in Git. |
+| [`reports/`](reports/) | EDA figures, tables, and the written [`EDAInsights.md`](reports/EDAInsights.md), generated by the notebooks. |
+| `data/raw/` | Original M5 CSV files. Not included in Git. |
+| `data/processed/` | Generated Parquet feature sets and reports. Not included in Git. |
+
+The modelling notebooks share the same scope, features, and chronological splits, so their results are directly comparable. They are self-contained: each repeats the data loading and EDA setup, then adds its own model.
 
 ## Dataset
 
@@ -28,9 +53,9 @@ sales_train_evaluation.csv
 sell_prices.csv
 ```
 
-`sample_submission.csv` is optional for the EDA and training workflows documented here. Keep the CSV filenames unchanged.
+`sample_submission.csv` is optional. Keep the CSV filenames unchanged.
 
-The validation sales file contains history through `d_1913`. The evaluation file includes the additional observed days through `d_1941`. The notebooks use the validation file for the EDA and the evaluation file for the later backtest window. The preprocessing script checks that the overlapping history in the two files agrees before building features.
+The validation sales file contains history through `d_1913`. The evaluation file includes the additional observed days through `d_1941`. The notebooks use the validation file for the EDA and the evaluation file for the later backtest window, and check that the overlapping history in the two files agrees.
 
 ## Run locally with VS Code
 
@@ -40,7 +65,7 @@ Install Python 3.10 or newer and VS Code. In VS Code, install the **Python** and
 
 ### 2. Put the data in the project
 
-Create `data/raw/` in the project root and copy the four required CSV files there:
+Create `data/raw/` in the project root and copy the CSV files there. The CSVs must be in `data/raw/`, not directly in `data/`:
 
 ```text
 SemProject_MLEngine/
@@ -84,50 +109,53 @@ pip install -r requirements.txt
 python -m ipykernel install --user --name semproject-mlengine --display-name "Python (SemProject_MLEngine)"
 ```
 
-### 4. Open and run the local notebook
+### 4. Open and run a notebook
 
-Open the project folder in VS Code, then open [`notebooks/LightGBM_BaseLocal.ipynb`](notebooks/LightGBM_BaseLocal.ipynb). Select the `Python (SemProject_MLEngine)` kernel when prompted. Run the notebook from the top so its data checks, EDA setup, and model variables are initialized in order.
+Open the project folder in VS Code, then open a notebook from `notebooks/` (start with [`LightGBM_BaseLocal.ipynb`](notebooks/LightGBM_BaseLocal.ipynb)). Select the `Python (SemProject_MLEngine)` kernel when prompted and run the notebook from the top so its data checks, EDA setup, and model variables are initialized in order.
 
-The notebook locates `data/raw/` by searching the current directory and its parent directories, so it works when VS Code starts Jupyter from either the repository root or `notebooks/`.
+The notebooks locate `data/raw/` by searching the current directory and its parent directories, so they work when Jupyter starts from either the repository root or `notebooks/`.
 
-The local notebook samples 500 product-store series by default to keep development runs manageable. In its training setup cell, set `MAX_SERIES = None` to include every series. Full-data reshaping creates tens of millions of series-day rows and can require substantial memory and disk space.
+Memory: the CA_1/FOODS notebooks load the full sales file, then keep only the scoped series. The pooled notebook builds about 11 million series-day rows and needs noticeably more memory and time (several minutes) than the single-store notebooks. To run a notebook headlessly:
+
+```bash
+cd notebooks
+jupyter nbconvert --to notebook --execute PooledModel_CA_FOODS.ipynb --output-dir ../outputs --ExecutePreprocessor.timeout=3000
+```
+
+Running a notebook also regenerates the EDA figures and tables in `reports/`, so those files may show up as modified in Git afterwards.
 
 ### 5. Optional: build the batch-prepared feature data
 
-The preprocessing script uses the complete dataset by default and writes files to `data/processed/model_ready/`:
+`scripts/preprocess_m5.py` prepares a full-dataset feature set in bounded batches and writes it to `data/processed/model_ready/`:
 
 ```bash
 python scripts/preprocess_m5.py
 ```
 
-To generate a smaller pilot dataset instead, use a different output folder name:
+To generate a smaller pilot dataset, use a different output folder name:
 
 ```bash
 python scripts/preprocess_m5.py --series-limit 500 --output-name model_ready_pilot
 ```
 
-The pilot output is for checking the pipeline and should not be used as the full training dataset. `--batch-size` controls how many series are processed per batch; its default is 250. For example:
+`--batch-size` controls how many series are processed per batch (default 250).
 
-```bash
-python scripts/preprocess_m5.py --batch-size 100
-```
-
-The script checks the sales-file overlap and writes a data-quality report, feature dictionary, split manifest, and Parquet features/targets. The main splits are:
+The script checks the sales-file overlap and writes a data-quality report, feature dictionary, split manifest, and Parquet features/targets. The splits are:
 
 - Development training targets: `d_57`–`d_1885`.
 - Development validation: `d_1886`–`d_1913`.
 - Later backtest: `d_1914`–`d_1941`.
 - Competition forecast inputs: `d_1942`–`d_1969` (no target values).
 
-The batch-prepared data is a separate workflow from the notebook’s sampled, long-form LightGBM experiment. The script prepares datasets; it does not fit or save a model.
+**Note:** the script still builds the older 28-day-embargoed lag and rolling features (lags 28/35/42/56) for the 28-day-ahead competition setting. The notebooks have since moved to next-day lags (1/7/14/21), so the script's output is not the feature set behind the results above. The script prepares data only; it does not fit or save a model.
 
 ## Google Colab setup
 
-Use [`LightGBM_BaseColab.ipynb`](LightGBM_BaseColab.ipynb) for the hosted Colab workflow. It mounts Google Drive, runs the EDA, and trains a sampled LightGBM model. A GPU is not required.
+Use [`notebooks/LightGBM_BaseColab.ipynb`](notebooks/LightGBM_BaseColab.ipynb) for the hosted Colab workflow. It mounts Google Drive, runs the EDA, and trains the CA_1/FOODS LightGBM model. A GPU is not required.
 
 ### 1. Prepare Google Drive
 
-Download the four required CSVs from the [M5 competition data page](https://www.kaggle.com/competitions/m5-forecasting-accuracy/data) and place them in this folder in your Google Drive:
+Download the four required CSVs and place them in this folder in your Google Drive:
 
 ```text
 MyDrive/M5_Dataset/
@@ -141,35 +169,35 @@ Keep the filenames unchanged. The notebook’s default path is `/content/drive/M
 
 ### 2. Open the notebook in Colab
 
-In Google Colab, choose **File → Upload notebook** and upload `LightGBM_BaseColab.ipynb` from this project. Alternatively, open the notebook from the project’s GitHub page if the repository is available to your Colab account. Choose a standard hosted Python runtime.
+In Google Colab, choose **File → Upload notebook** and upload `LightGBM_BaseColab.ipynb` from the `notebooks/` folder. Alternatively, open it from the project’s GitHub page if the repository is available to your Colab account. Choose a standard hosted Python runtime.
 
 ### 3. Connect Drive and install packages
 
-Run the first notebook cell and complete Google’s Drive authorization prompt. The following package cell installs LightGBM, scikit-learn, Matplotlib, and Seaborn. Pandas and NumPy are provided by the Colab runtime and are used by the notebook as well.
+Run the first notebook cell and complete Google’s Drive authorization prompt. The package cell installs LightGBM, scikit-learn, Matplotlib, and Seaborn. Pandas and NumPy are provided by the Colab runtime.
 
 ### 4. Run the notebook
 
-Use **Runtime → Run all** to execute the notebook from top to bottom. It first checks and explores the validation data, then builds the sampled training table from the evaluation data and evaluates the `d_1914`–`d_1941` window against a lag-28 baseline. EDA tables and figures are saved under `MyDrive/reports/`.
+Use **Runtime → Run all**. EDA tables and figures are saved under `MyDrive/reports/`. If you change the configuration, rerun from the beginning so the data and features are rebuilt consistently.
 
-The training configuration uses 500 product-store series by default. Set `MAX_SERIES = None` to use every series; full-data reshaping can exceed the memory available in a standard Colab runtime. If you change the configuration, rerun the notebook from the beginning so the data and features are rebuilt consistently.
+The hurdle, bucketed, and pooled notebooks are written for the local layout (`data/raw/`) and are not set up for Colab.
 
 ## EDA outputs
 
 The EDA examines data completeness and key uniqueness, total sales over time, store and product differences, zero-sales frequency, demand variability, calendar patterns, events, SNAP indicators, and selling prices. It saves charts and summary tables in:
 
 ```text
-reports/figures/   # local notebook
-reports/tables/    # local notebook
+reports/figures/   # local notebooks
+reports/tables/    # local notebooks
 MyDrive/reports/   # Colab notebook output
 ```
 
-See [`reports/EDAInsights.md`](reports/EDAInsights.md) for the written EDA interpretation where available.
+See [`reports/EDAInsights.md`](reports/EDAInsights.md) for the written EDA interpretation.
 
 ## Reproducibility and notes
 
-- The notebooks use a fixed random seed (`42`) for series sampling.
-- The local notebook and Colab notebook each include their own EDA and sampled training workflow. They are intended as environment-specific versions of the experiment.
-- The preprocessing script uses the full dataset unless `--series-limit` is supplied. It preserves zero sales and missing prices rather than replacing them with fabricated values.
+- The notebooks use a fixed random seed (`42`).
+- Splits are chronological, never random: train through `d_1885`, validate on `d_1886`–`d_1913`, and backtest on `d_1914`–`d_1941` after refitting on all labelled data before it.
+- Zero sales and missing prices are preserved rather than replaced with fabricated values.
 - Raw data and processed Parquet files are excluded from version control. Download the raw data separately and regenerate processed files when needed.
 - `requirements.txt` pins compatible version ranges for the main libraries. Select the project’s virtual environment as the Jupyter kernel before running notebook cells.
 
@@ -177,15 +205,15 @@ See [`reports/EDAInsights.md`](reports/EDAInsights.md) for the written EDA inter
 
 **The notebook cannot find the CSV files**
 
-For VS Code, confirm the files are under `data/raw/` and that the notebook kernel is using this project’s environment. For Colab, confirm Drive is mounted and the files are under `MyDrive/M5_Dataset/`.
+Confirm the files are under `data/raw/` (not just `data/`) and that the notebook kernel is using this project’s environment. For Colab, confirm Drive is mounted and the files are under `MyDrive/M5_Dataset/`.
 
 **A Python package is missing**
 
-Activate the project environment and run `pip install -r requirements.txt` again. In Colab, rerun the notebook’s package-install cell and restart the runtime if imports still fail.
+Activate the project environment and run `pip install -r requirements.txt` again. In Colab, rerun the package-install cell and restart the runtime if imports still fail.
 
-**The full notebook runs out of memory**
+**The notebook runs out of memory**
 
-Keep `MAX_SERIES = 500` for notebook experiments. For complete data processing, use `scripts/preprocess_m5.py`, which processes series in batches. Reduce `--batch-size` if the preprocessing run still needs less peak memory.
+The pooled notebook is the heaviest. Close other memory-hungry programs, restart the kernel, and run it from the top. For complete-dataset processing, use `scripts/preprocess_m5.py`, which works in batches; reduce `--batch-size` to lower its peak memory.
 
 **Parquet support is unavailable**
 

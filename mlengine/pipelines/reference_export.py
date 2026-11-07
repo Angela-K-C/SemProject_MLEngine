@@ -67,7 +67,7 @@ def export_reference(out_dir: Path | None = None, raw_dir: Path | None = None) -
         "source": "M5 Forecasting – Accuracy (Kaggle), used under the competition terms for research/education",
     }
     written = {}
-    (out_dir / "store.json").write_text(json.dumps(store, indent=2))
+    (out_dir / "store.json").write_text(json.dumps(store, indent=2), encoding="utf-8")
     written["store"] = out_dir / "store.json"
     for name, frame in [("products", products), ("sales_daily", sales_daily), ("prices_future", prices_future)]:
         frame.to_csv(out_dir / f"{name}.csv", index=False)

@@ -198,7 +198,7 @@ def release(registry_dir: Path | None = None, version: str = "1.1.0", raw_dir: P
                   _card(f"{MODEL_ID}@{version}-bt", bt_meta["training"], bt_block, [1],
                         "Backtest model: used for replays with as-of dates from 2016-04-24 to 2016-05-21."),
                   frames)
-    (out_dir / f"{version}-bt" / "backtest" / "summary.json").write_text(json.dumps(bt_block, indent=2))
+    (out_dir / f"{version}-bt" / "backtest" / "summary.json").write_text(json.dumps(bt_block, indent=2), encoding="utf-8")
 
     log.info("Recursive %s-day backtest…", CANDIDATE_HORIZON)
     bt_artifact = load_artifact(out_dir / f"{version}-bt")
@@ -214,16 +214,16 @@ def release(registry_dir: Path | None = None, version: str = "1.1.0", raw_dir: P
         horizons = [1, CANDIDATE_HORIZON]
     bt_meta["capabilities"]["horizons"] = horizons
     dev_meta_file = out_dir / f"{version}-dev" / "metadata.json"
-    dev_meta = json.loads(dev_meta_file.read_text())
+    dev_meta = json.loads(dev_meta_file.read_text(encoding="utf-8"))
     dev_meta["capabilities"]["horizons"] = horizons  # same recipe; validated by the recursive backtest
-    dev_meta_file.write_text(json.dumps(dev_meta, indent=2, default=str))
+    dev_meta_file.write_text(json.dumps(dev_meta, indent=2, default=str), encoding="utf-8")
     bt_meta["evaluation"]["recursive"] = recursive
     save_artifact(out_dir / f"{version}-bt", bt_model.booster_, bt_meta,
                   _card(f"{MODEL_ID}@{version}-bt", bt_meta["training"], bt_block, horizons,
                         "Backtest model: used for replays with as-of dates from 2016-04-24 to 2016-05-21.",
                         recursive),
                   frames)
-    (out_dir / f"{version}-bt" / "backtest" / "summary.json").write_text(json.dumps(bt_block, indent=2))
+    (out_dir / f"{version}-bt" / "backtest" / "summary.json").write_text(json.dumps(bt_block, indent=2), encoding="utf-8")
 
     # 3. Production model -----------------------------------------------------------------------
     log.info("Training production model…")
@@ -239,6 +239,6 @@ def release(registry_dir: Path | None = None, version: str = "1.1.0", raw_dir: P
                         "Active model: true forecasts from 2016-05-22 (the last day of observed sales).", recursive),
                   {"calendar": calendar_frame, "backtest/per_product": per_product,
                    "demand_classes": current_classes})
-    (out_dir / version / "backtest" / "summary.json").write_text(json.dumps(bt_block, indent=2))
+    (out_dir / version / "backtest" / "summary.json").write_text(json.dumps(bt_block, indent=2), encoding="utf-8")
     results["createdAt"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     return results

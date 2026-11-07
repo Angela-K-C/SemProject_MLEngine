@@ -158,7 +158,7 @@ def export_samples(out_dir: Path | None = None, raw_dir: Path | None = None, sto
                 "wizard": {"missingDaysAreZero": spec["missingDaysAreZero"]}}
         if name == "sample_shop_messy":
             text, expected = _messy(frame, rng)
-            path.write_text(text)
+            path.write_text(text, encoding="utf-8")
             info["wizard"].update({"dateFormat": "DD/MM/YYYY", "columns": {
                 "salesDate": "Date", "productName": "Item Name", "category": "Department", "unitsSold": "Qty",
                 "unitPrice": "Price"}})
@@ -171,8 +171,8 @@ def export_samples(out_dir: Path | None = None, raw_dir: Path | None = None, sto
             info["observedProductDays"] = _observed_product_days(frame, spec["zeros"])
         manifest["files"][path.name] = info
         written[name] = path
-    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
-    (out_dir / "README.md").write_text(_readme(manifest))
+    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (out_dir / "README.md").write_text(_readme(manifest), encoding="utf-8")
     written["manifest"] = out_dir / "manifest.json"
     return written
 

@@ -44,6 +44,8 @@ You need Docker, plus the three repositories side by side in one folder:
 └── SemProject_Backend/
 ```
 
+**The project owner normally runs `SemProject_Backend\scripts\setup-local.ps1` before you start.** It does every step in this section, so the stack should already be up and seeded. Check with `curl http://localhost:8000/healthz` before redoing anything below.
+
 If you can't read `../SemProject_Backend` or `../SemProject_MLEngine`, ask the owner to start you with `claude --add-dir ../SemProject_MLEngine --add-dir ../SemProject_Backend`, or to run `/add-dir`.
 
 **On Windows**, use Docker Desktop. Run the commands below in Git Bash, which handles `$PWD` and `( … )`. In PowerShell, replace `$PWD/..` with `${PWD}/..`, and run the `cd` steps separately. `export-reference` and `export-samples` need a Python environment in the ML engine (`py -m venv .venv`, `.venv\Scripts\pip install -e .`). If the owner copied `data/processed/` across, skip the exports.

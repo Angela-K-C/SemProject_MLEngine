@@ -1,263 +1,187 @@
-# Handoff: Mobile App and Backend Build
+# Handoff: Android App Build
 
-**For:** the Claude agent building the Retail Demand Forecasting Android app (and the backend it talks to)
-**From:** the ML engine work in `SemProject_MLEngine`, branch `model-implementation`
-**Date:** 7 November 2026
+**For:** the Claude agent building the Retail Demand Forecasting Android app.
+**From:** the model and backend work (finished 7 November 2026).
+**Your job:** build the Android app described in [`retail_demand_forecasting_mobile_design.md`](retail_demand_forecasting_mobile_design.md) (the spec), on top of the **finished backend API**. Everything server-side exists and is tested. You don't need to build, mock or change the backend or the model.
 
-Read this file first. Then read `retail_demand_forecasting_mobile_design.md` (v2.1), which is the full product and UI spec. Where the two differ, this file and the code are newer.
+Read this file first, then the spec, then [`SemProject_Backend/docs/api.md`](../SemProject_Backend/docs/api.md). Where they disagree, api.md is right about the API, and this file is right about everything else. Ignore any spec text about building `mlengine` or the ML service (for example in §21); that work is done.
 
 ---
 
-## 1. Where things stand
+## 1. What exists
 
-| Layer | State | Notes |
+| Part | Where | Status |
 | --- | --- | --- |
-| Model research (notebooks, Stages 1–7) | Done | `README.md` → "Modelling journey" |
-| `mlengine` Python package | **Done, tested** | Features, training, inference, baselines, metrics, demand classes, model registry |
-| Released model `m5-ca1-foods@1.1.0` (+ `1.1.0-bt`, `1.1.0-dev`) | **Done, committed** | `models/m5-ca1-foods/` (about 2.5 MB; no raw data needed to serve) |
-| Internal ML service (FastAPI) | **Done, tested** | `mlengine/service/`, `Dockerfile` |
-| Reference workspace seed data | **Done** (generated, not committed) | `python -m mlengine export-reference` |
-| Sample business CSVs (own-data demos) | **Done** (generated, not committed) | `python -m mlengine export-samples`: see `data/processed/samples/README.md` for the wizard answers |
-| **Backend API** (app ↔ backend, design §12.1) | **Done (slices 1–4)**: auth, demo workspace, forecast jobs, CSV imports, own-data training, team invitations, password reset, research export | Separate repo `../SemProject_Backend`: start with its `docs/api.md` and `docs/openapi.json` |
-| **Android app** | **Not started** | Your main job |
+| Model research (notebooks) | this repo (`SemProject_MLEngine`), `notebooks/` | Done |
+| ML engine + internal ML service | this repo, `mlengine/`, `models/` | Done, tested. **Not for the app to call** |
+| **Backend API** (what the app calls) | `../SemProject_Backend` ([GitHub](https://github.com/Karanei-Kimutai/SemProject_Backend)) | **Done**: auth, workspaces, stores, products, history, readiness, capabilities, model cards, forecast jobs, CSV imports, own-data training, team, password reset, research export. 56 tests; checked end to end in Docker |
+| Demo data | Seeded into the backend from `python -m mlengine export-reference` | Done |
+| Sample business data | `python -m mlengine export-samples` → `data/processed/samples/` | Done |
+| **Android app** | **New repository, e.g. `../SemProject_MobileApp`** (ask the project owner for the name or remote) | **Not started: your job** |
 
-Proven on the model side:
-- Features are identical to the notebook over all 2.76M rows.
-- Training reproduces the Stage 3 numbers: 70 trees, dev RMSE 2.356, backtest RMSE 2.377.
-- The HTTP service reproduces the backtest end to end.
-- A recursive 7-day forecast beats both baselines, so horizons **1 and 7** are enabled.
-
----
-
-## 2. The architecture you must keep
+## 2. Architecture and non-negotiables
 
 ```text
-Android app ──HTTPS──▶ Backend API ──private HTTP + X-Internal-Token──▶ ML service (mlengine)
- (Kotlin/Compose)      auth, permissions, sales history,                features, LightGBM,
-                       imports, forecast runs/jobs, DB                  baselines, metrics, registry
+Android app ──HTTPS──▶ Backend API ──(private)──▶ ML service
+ (this job)            ../SemProject_Backend       this repo; never called by the app
 ```
 
-Non-negotiables:
+1. **The app calls only the backend** (`/v1/...`). It never calls the ML service (`/internal/v1/...`, port 8100) and never holds `ML_SERVICE_TOKEN`.
+2. **The app contains no forecasting maths.** No lags, baselines, errors, metrics, demand classes or "accuracy". Every number on a forecast or model screen comes from the API. The only arithmetic allowed is display formatting and summing daily values for totals and a weekly view (spec §4.3).
+3. **Build the UI from `capabilities`.** Horizons, methods, as-of ranges and AI availability come from `GET /v1/stores/{sid}/models/capabilities`. Never hardcode `[1, 7]`, dates or thresholds.
+4. **Never fabricate data.** Show errors and metrics only where the API returned them (`runMetrics`, `productBacktest`, model card). No placeholder accuracy, totals or "insights".
+5. **Be honest about results.** If the baseline beat the AI on a product, or a business's training ended `GATE_FAILED`, say so plainly. These are valid research outcomes (spec §8.10).
+6. **Follow the spec's stack** (§4): Kotlin, Fragments that each host a `ComposeView`, all screens in Jetpack Compose (no XML screen layouts), Material 3, MVVM, Coroutines/Flow, Retrofit + OkHttp, Kotlin Serialization, Room, DataStore, WorkManager, Storage Access Framework. It also requires the **three menu types** (options, context, popup; §6).
 
-1. **The app never calls the ML service.** It calls only the backend. The ML service has no user auth and must stay off the internet.
-2. **The app contains no forecasting maths.** No lags, baselines, metrics, demand classes or "accuracy". Every number on a forecast screen comes from the backend, which gets it from the ML service.
-3. **The M5 model is used only for M5 products** (the Reference workspace). A business's own products get baselines until an own-data model has been trained *and* has passed its backtest gate.
-4. **Offer only the horizons in `capabilities.horizons`.** Today that is `[1, 7]`. Never hardcode 14 or 30.
-5. **Never fabricate data.** Show metrics only where actual sales were known. Label any mock fixtures clearly.
-6. **Respect the leakage rule.** Replays must use the model version the ML service resolves. Don't let a client pick a version trained after the as-of date; the service rejects it anyway with `NO_MODEL_FOR_AS_OF`.
+## 3. Run the whole stack locally
 
----
-
-## 3. Run the ML service locally
-
-From the repository root, with Python 3.10+:
+You need Docker, plus the three repositories side by side (`SemProject_MLEngine`, `SemProject_Backend`, your app).
 
 ```bash
-python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-pytest                                                # 23 fast tests; should all pass
-ML_SERVICE_TOKEN=dev-token python -m mlengine serve --host 127.0.0.1 --port 8100
-# OpenAPI docs: http://127.0.0.1:8100/docs  (send header X-Internal-Token: dev-token)
+cd ../SemProject_Backend
+cp .env.example .env        # then set the local values below
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+curl http://localhost:8000/healthz                     # {"status":"ok",...}; API docs at http://localhost:8000/docs
 ```
 
-Or with Docker: `docker build -t mlengine-service . && docker run -p 8100:8100 -e ML_SERVICE_TOKEN=dev-token mlengine-service`.
+Local `.env` values that work:
 
-Quick check:
+```env
+API_DOMAIN=localhost
+POSTGRES_PASSWORD=localdevpw
+DATABASE_URL=postgresql+psycopg://forecast:localdevpw@db:5432/forecast
+JWT_SECRET=local-docker-secret-0123456789abcdef0123456789
+ML_SERVICE_TOKEN=local-docker-ml-token
+ML_SERVICE_URL=http://ml:8100
+MLENGINE_PATH=../SemProject_MLEngine
+DB_PORT=55433
+API_PORT=8000
+```
+
+**Load the demo workspace once.** It needs the raw M5 CSVs in `SemProject_MLEngine/data/raw/`; the project owner has them. Seeding takes about 7 minutes in Docker:
 
 ```bash
-curl -s localhost:8100/internal/v1/health -H "X-Internal-Token: dev-token"
-curl -s localhost:8100/internal/v1/forecast -H "X-Internal-Token: dev-token" \
-     -H "Content-Type: application/json" -d @docs/ml-service-examples/forecast_request.json
+(cd ../SemProject_MLEngine && python -m mlengine export-reference && python -m mlengine export-samples)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm \
+  -v "$PWD/../SemProject_MLEngine/data/processed/reference:/seed:ro" api python -m app.cli seed-reference /seed
+echo "a-long-password-1" | docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm -T api \
+  python -m app.cli create-user research@example.com --research --password-stdin
 ```
 
-Environment variables: `ML_SERVICE_TOKEN` (required in any shared environment) and `MODEL_REGISTRY_PATH` (default `./models`; own-data models are written here too, so it must be writable and persistent).
+- **Base URL:** from the Android emulator, use `http://10.0.2.2:8000`. On a phone on the same Wi-Fi, use your machine's LAN IP and allow cleartext for debug builds only.
+- **Email** (password reset codes, invitations): locally, messages only appear in `docker compose logs api`.
+- **Research mode:** the user created above has `isResearch: true`. That unlocks research dates, model-version choice and `/v1/research/*`.
+- **Fresh sample data:** re-run `export-samples` before a demo, so the sample history ends yesterday.
+- **Starting over:** `docker compose ... down` keeps the data; adding `-v` wipes it.
 
-The Android emulator reaches the host machine at `10.0.2.2`. That address is for the **backend**, never the ML service.
+## 4. The contract
 
----
+- **[`SemProject_Backend/docs/api.md`](../SemProject_Backend/docs/api.md)** is the guide to every endpoint, field, error code and flow (auth refresh, polling, imports, training, team).
+- **[`SemProject_Backend/docs/openapi.json`](../SemProject_Backend/docs/openapi.json)** is the machine-readable contract. Generate the DTOs and Retrofit service from it, or check hand-written DTOs against it. A backend test keeps it current.
+- **Where api.md and spec §12.1 differ, api.md is right.** The differences:
+  - IDs are UUIDs, and a product has a separate `sku`.
+  - It adds `/v1/auth/register`, password reset and change, job retry, forecast delete, the history summary, eligibility, training runs, members and invitations, and the research summary.
+  - `points[]` use `baseline` and `seasonalNaive`.
+  - The training run is its own resource (`/v1/training-runs/{id}`).
+- **Errors** always have the shape `{"error": {"code", "message", "details", "requestId"}}`. Map `code` to string resources, and fall back to `message`, which is already plain language.
 
-## 4. Recommended build order
+## 5. Build order
 
-The backend is a separate repository, `../SemProject_Backend` (FastAPI + PostgreSQL, its own sign-in, Docker Compose + Caddy on one server). All four slices are built and tested end to end against this ML service, in Docker: auth, workspaces/stores/products, demo seeding, history, readiness, capabilities, model card, forecast jobs, history and CSV export, CSV imports, own-data training, team invitations and roles, password reset, rate limits, and the research summary and export. Every screen in the design spec has a real endpoint, so the app doesn't need mocks. The sample shop CSVs (`python -m mlengine export-samples`) give you realistic business data to demo imports and training. **The app should call the backend as documented in `SemProject_Backend/docs/api.md`**, and generate its network client from `SemProject_Backend/docs/openapi.json`. Where that guide differs from design §12.1 (for example, IDs are UUIDs, and the SKU is a separate `sku` field), the guide is correct.
+1. **Foundation:** project setup, theme and tokens (§7), app shell and navigation (§5), the three menus (§6), and state components (loading, empty, error, offline).
+2. **Auth:** register, login, refresh in an OkHttp `Authenticator`, logout, and forgot password. Tokens go in Keystore-backed storage (§14).
+3. **Demo journey:** workspace picker → dashboard → products → forecast configuration → job progress → results (chart, table, three kinds of evidence) → history → model info. This is the core of the research demo.
+4. **Business journey:** create workspace and store → CSV import wizard (7 steps, §8.6) → readiness → baseline forecasts → eligibility progress → train → AI forecasts.
+5. **Team and settings:** members, invitations (owner) and "My invitations" (everyone), plus profile and change password.
+6. **Research:** summary screen and CSV export (research users only).
+7. **Offline and cache:** Room for products, imports and completed forecasts (§13).
+8. **Tests and acceptance:** spec §19.
 
-1. ~~Backend skeleton~~ and 2. ~~Forecast path for the Reference workspace~~: **done** (backend slice 1).
-3. **Android foundation.** Shell, theme, Fragments + `ComposeView`, navigation, the three menus, state components (design §4–§7, §20 Phase D).
-4. **Android forecast flow against the real backend.** Products → configure → progress → results → history → model info.
-5. **Imports** (backend slice 2 is done): CSV wizard, validation report, readiness. Baseline-only forecasts until a model is trained.
-6. **Own-data AI** (backend slice 3 is done): eligibility progress, the training job, and showing the gate result (§5.6).
+Build and test after each step. Commit as you go.
 
-If the backend must lag behind, build the app against a **fake repository** that returns the real example JSON from `docs/ml-service-examples/`, reshaped into the public API, and label it clearly as sample data in the UI.
+## 6. Screens → endpoints and fields
 
----
+| Screen (spec) | Endpoint(s) | Fields to use |
+| --- | --- | --- |
+| Workspace picker (§8.3) | `GET /v1/me`, `GET /v1/workspaces`, `GET /v1/workspaces/{wid}/stores` | `role` (`REFERENCE` = demo, read-only); `isReference` → "Demo data" badge |
+| Dashboard (§8.4) | `…/history/summary`, `…/readiness`, `…/models/capabilities`, `GET /v1/forecasts?storeId=` | `historyEnd` ("Sales recorded up to …"); `readiness.stale` → upload notice; AI status from `capabilities.aiAvailable` / `aiUnavailableReason` (`TRAINING` / `NOT_ELIGIBLE` / `GATE_FAILED` / `NOT_TRAINED`) |
+| Products (§8.5) | `GET …/products?q=&category=&demandClass=`, `…/products/{pid}`, `…/products/{pid}/history` | `demandClass.label` chip; in history, `units: null` = **not recorded** (draw a gap, not 0) |
+| Forecast configuration (§8.8) | `GET …/models/capabilities` | `methods`, `horizons`, `asOf.default / editable / replayMin / replayMax / researchMin`; `baselines[].label` |
+| Job progress (§8.9) | `POST /v1/forecasts` → `GET /v1/forecast-jobs/{id}` | `status`; `error.message`; offer Retry only if `retryable` |
+| Results (§8.10) | `GET /v1/forecasts/{id}` | `points[].ai / baseline / seasonalNaive / actual`; `history[]` (the recent days for the chart); `asOfDate`; `isReplay`; `model.version`; `horizon.validated` (`false` → "Experimental" badge); `priceAssumption` (`LAST_KNOWN` → "price assumed unchanged"); `product.demandClass.label`; `aiUnavailableReason` |
+| Results: evidence 1 (this run) | same | `runMetrics` (replays only): "Error on these days (actual sales known)" |
+| Results: evidence 2 (this product) | same | `productBacktest.ai / naive_last_value` (`mae`, `rmse`, `wape`), `n`, `window` (demo only; add the small-sample note) |
+| Results: evidence 3 (the model) | `GET …/models/active` | `card.backtest`, `card.horizonAccuracy.byDay[]` (`aiRmse` vs `naiveRmse`, a small line chart), `card.limitations` |
+| History (§8.11) | `GET /v1/forecasts?storeId=&productId=&replay=&status=` | `isReplay` → "Replay" tag; `actualsAvailable` → "Actuals now available" |
+| Export | `GET /v1/forecasts/{id}/export?format=csv` | Save through SAF |
+| Data screen + import wizard (§8.6) | `POST …/imports` (multipart, `Idempotency-Key`), `PUT /v1/imports/{iid}/mapping`, `GET …/validation`, `GET …/errors`, `POST …/confirm`, `DELETE`, `GET …/imports` | `detected.suggestedMapping` (highlight `confidence: "CHECK"`), `dateFormatAmbiguous`; the required **"no row means zero sales?"** question → `missingDaysAreZero`; `summary.*`; `overlappingDays` → SKIP/REPLACE choice; `result.*` |
+| Model info (§8.13) | `GET …/models/active`, `GET …/models/eligibility`, `POST …/models/train`, `GET /v1/training-runs/{id}`, `GET …/models/training-runs` | Eligibility `checks.*.value / required` ("64 of 120 days"); run `outcome` (`TRAINED` / `GATE_FAILED` / `NOT_ELIGIBLE`), `backtest`, `horizonAccuracy` |
+| Team (§8.12) | `…/members`, `…/invitations`, `GET /v1/me/invitations`, `POST /v1/invitations/{id}/accept`, `…/decline` | Owners manage; check `/v1/me/invitations` after sign-in and badge it |
+| Auth extras (§8.2) | `POST /v1/auth/password-reset/request`, `…/confirm`, `POST /v1/auth/change-password` | 8-digit code; on `429 RATE_LIMITED` show `Retry-After` |
+| Research (research users) | `GET /v1/research/summary`, `GET /v1/research/export` | `overall`, `byDemandClass`, `byDayAhead` for AI vs both baselines; always show the `note` |
 
-## 5. ML service contract: what the backend needs to know
+**For orientation only (never hardcode these):** the demo store's next-day backtest is AI RMSE 2.377 against naive 3.219. 925 of its 1,437 products are "intermittent", so many will show "Sells on some days only". The sample shop's own model scores AI RMSE 2.50 against 3.06.
 
-All endpoints are under `/internal/v1`. The full schemas are at `/docs` when the service is running, and in `mlengine/service/schemas.py`. Real examples are in `docs/ml-service-examples/`:
+## 7. Suggested copy for common codes
 
-| File | What it shows |
-| --- | --- |
-| `forecast_request.json` / `forecast_response.json` | True 7-day forecast from 2016-05-22 for `FOODS_3_090` (resolved to `1.1.0`) |
-| `replay_request.json` / `replay_response.json` | Replay from as-of 2016-05-08 (resolved to `1.1.0-bt`); the actual for 2016-05-09 was 72 |
-| `error_no_model_for_as_of.json` | What happens when a replay asks for a version trained after the as-of date |
-
-The examples send only 28 days of history, so their `demandClass` is `INSUFFICIENT_DATA`. Send **365 days** in production.
-
-### 5.1 `POST /internal/v1/forecast`
-
-Request essentials:
-- `model: {id, version?}`. Omit the version: the service picks the newest version trained only on data up to `asOfDate`.
-- `asOfDate`: the last day of history the forecast may use. The forecast starts the next day.
-- `horizonDays`: must be in the model's `capabilities.horizons` (`[1, 7]`). `allowExperimentalHorizon: true` allows up to 28 for research users only; those responses carry `horizon.validated: false`.
-- `baselines`: `["naive_last_value", "seasonal_naive_7"]`. The primary research baseline is `naive_last_value`.
-- `includeAi: false` with no model: baselines and demand class only (own-data stores without a model).
-- `series[]`, up to 5,000:
-  - `productId`, `storeId`, optional `category` and `firstPriceDate`;
-  - `history[{date, units, price}]`. Units of `null`, or an absent day, mean "not recorded", which is not zero. Don't send dates after `asOfDate`. At most 400 days are used;
-  - `futurePrices[{date, price}]` for the forecast days, when known.
-- For M5 products, send **only** `productId` (e.g. `FOODS_3_090`) and `storeId` (`CA_1`). The service derives the other M5 IDs, the calendar, events and SNAP itself.
-
-Response essentials:
-- Top level: `model{id, version, featureSchema, trainingEndDate}`, `horizon{startDate, endDate, days, validated}`, `mlengineVersion`, `baselineLabels` (display names, e.g. "Same as last day").
-- Per series:
-  - `points[{date, ai, baselines{naive_last_value, seasonal_naive_7}}]`;
-  - `aiUnavailableReason`, `missingDaysInLookback`, `priceAssumption`;
-  - `demandClass{class, label, adi, cv2, zeroShare, observedDays, saleDays}`;
-  - `warnings`.
-- **A per-series failure is not an HTTP error.** If AI can't run for one product, `ai` is `null`, `aiUnavailableReason` says why, and the baselines are still filled.
-
-Values are expected units, rounded to 4 decimals, for example `48.1623`. Store them raw. The app shows one decimal place ("≈ 48.2 units") and sums raw values for totals.
-
-### 5.2 Other endpoints
-
-| Endpoint | Use it for |
-| --- | --- |
-| `GET /health`, `GET /models` | Startup check; capabilities of every version |
-| `GET /models/{id}/resolve?asOfDate=` | Show which model a replay will use before running it |
-| `GET /models/{id}/{version}/card` | `ModelInfoFragment` (design §8.13) |
-| `GET /models/{id}/{version}/backtest?productId=` | "How the model did on this product" (design §8.10, item 2) |
-| `POST /backtest` | Recompute a one-step backtest over a window (≤ 91 days) |
-| `POST /demand-class` | Product list chips and filters (design §6.3, §8.5) |
-| `POST /eligibility` | Own-data "progress toward AI", e.g. "64 of 120 days" |
-| `POST /train` → `GET /train/{jobId}` | Own-data training. The job result `status` is `TRAINED`, `GATE_FAILED` or `NOT_ELIGIBLE` |
-
-Training jobs live in the ML service's memory. If it restarts, the backend should treat unfinished jobs as failed and retry. Finished models persist in the registry.
-
-### 5.3 Error codes
-
-- **Request-level** (`{"error": {"code", "message", "details", "requestId"}}`):
-  - `INVALID_REQUEST`, `MODEL_REQUIRED`, `NO_MODEL_FOR_AS_OF`, `HORIZON_NOT_SUPPORTED`, `HISTORY_AFTER_AS_OF`, `DATE_OUTSIDE_CALENDAR`, `INVALID_WINDOW`, `INVALID_HISTORY` (all 422);
-  - `MODEL_NOT_FOUND`, `NO_STORED_BACKTEST`, `JOB_NOT_FOUND` (404);
-  - `UNAUTHORIZED` (401).
-- **Per-series** (`aiUnavailableReason`): `INSUFFICIENT_HISTORY` (< 21 days), `TOO_MANY_GAPS` (> 3 unrecorded days in the last 21), `PRODUCT_NOT_IN_MODEL`, `AI_NOT_REQUESTED`.
-
-Suggested app copy (localise in string resources; always fall back to the backend's `message`):
+Put these in string resources, and fall back to the API's `message`.
 
 | Code | Message |
 | --- | --- |
 | `INSUFFICIENT_HISTORY` | "This product needs at least 21 days of sales history for an AI forecast." |
 | `TOO_MANY_GAPS` | "Several recent days have no sales recorded, so only the simple forecast is shown." |
-| `STALE_HISTORY` (backend) | "Your latest sales are from {date}. Upload sales up to yesterday to forecast tomorrow." |
-| `AI_NOT_AVAILABLE` (backend) | "AI forecasts aren't available for this store yet. 'Same as last day' forecasts are available now." |
-| `PRODUCT_NOT_IN_MODEL` | "The demo model only knows the demo store's products." |
+| `STALE_HISTORY` / `readiness.stale` | "Your latest sales are from {date}. Upload sales up to yesterday to forecast tomorrow." |
+| `AI_NOT_AVAILABLE` | "AI forecasts aren't available for this store yet. 'Same as last day' forecasts are available now." |
+| `GATE_FAILED` (training outcome) | "The AI model didn't beat the simple forecast on your recent sales, so we'll keep using the simple forecast. Try again after adding more sales." |
+| `NOT_ELIGIBLE` | "AI forecasting becomes available once your store has enough history." (show the checks) |
+| `AS_OF_OUT_OF_RANGE` | "Choose a date between {min} and {max}." |
 | `NO_MODEL_FOR_AS_OF` | "No model is available for that date without using information from the future." |
-| `HORIZON_NOT_SUPPORTED` | Hide the option. This should never reach the user. |
+| `HORIZON_NOT_SUPPORTED` | Hide the option; this should never reach the user |
+| `RATE_LIMITED` | "Too many attempts. Try again in {retryAfterSeconds} seconds." |
+| `ML_SERVICE_UNAVAILABLE` | "Forecasting is temporarily unavailable. Try again shortly." |
 
----
+## 8. Demo scripts (use these to test your screens)
 
-## 6. Seeding the Reference workspace
+1. **Demo replay:** demo store → product `FOODS_3_090` → as-of 2016-05-08, next day, Compare. Expect AI ≈ 57.1, same-as-last-day 77, actual 72, replay error panels and the product backtest.
+2. **Demo true forecast:** the same product, as-of 2016-05-22 (the default), 7 days. Expect seven AI and baseline points and no actuals.
+3. **Business with enough data:** create a workspace and a store (US / TX / USD / America/Chicago) and import `sample_shop_eligible.csv`.
+   - Answer **"Yes"** to "no row means zero sales?".
+   - The import shows Needs Attention because of real spikes (expected), then confirm.
+   - Eligibility should pass; tap Train. In about 25 s the outcome is `TRAINED` with horizons `[1, 7]`, and the app now offers AI forecasts.
+4. **Business not ready yet:** import `sample_shop_small.csv` (answer "No"). Expect "60 of 120 days", Train refused with `NOT_ELIGIBLE`, and baseline forecasts working.
+5. **Messy import:** upload `sample_shop_messy.csv`. Expect a semicolon file with names only and an ambiguous date format, so choose `DD/MM/YYYY`. The report shows 5 rejected rows with line numbers, plus warnings.
+6. **Team:** invite a second email as Viewer, register that user, accept from "My invitations". Expect read-only access: no Generate, no Upload.
+7. **Password reset:** request a code, read it from `docker compose logs api`, reset.
 
-Run `python -m mlengine export-reference` (needs the raw M5 CSVs in `data/raw/`). It writes `data/processed/reference/`:
+`data/processed/samples/README.md` lists the wizard answers for each file.
 
-| File | Rows | Columns |
-| --- | --- | --- |
-| `store.json` | 1 | `storeId: CA_1`, name "Demo Store (M5 CA_1)", `isReference: true`, `country: US`, `subdivision: CA`, `timezone: America/Los_Angeles`, `currency: USD`, history 2011-01-29 → 2016-05-22, `calendarEndDate: 2016-06-19`, `modelId: m5-ca1-foods` |
-| `products.csv` / `.parquet` | 1,437 | `store_id, product_id, name, category (FOODS_1/2/3), unit_of_measure (units), first_price_date, first_sale_date` |
-| `sales_daily.csv` / `.parquet` | 2,789,217 | `store_id, product_id, date, units_sold, unit_price` (price empty before an item's first priced week) |
-| `prices_future.csv` / `.parquet` | 40,236 | `store_id, product_id, date, unit_price` for 2016-05-23 → 2016-06-19 |
+## 9. Pitfalls
 
-Every M5 day is recorded (zeros included), so the Reference workspace has no gaps. Store `first_price_date` on the product and send it as `firstPriceDate`. Send `prices_future` rows as `futurePrices` for true forecasts. Mark the workspace read-only.
+- **Not recorded is not zero.** `units: null` in history means unrecorded. Draw a gap, and never show it as 0.
+- **Decimals are intentional.** The model predicts *expected* demand: show "≈ 2.4 units" (one decimal by default, with a popup option for whole units; spec §8.10). Compute totals from the raw values.
+- **Replay vs true forecast.** `isReplay: true` has actuals and run errors; a true forecast has neither. Label them differently (spec §8.8).
+- **Business stores can't pick an as-of date** (`asOf.editable: false`). Only the demo store and research users can.
+- **Keep metrics paired.** AI and baseline metrics on one screen must come from the same block (`runMetrics`, `productBacktest` or the card), never mixed. Put "Lower error means it did better on that sample, not that it will do better tomorrow." under every metrics block.
+- **7-day forecasts run about 4% high** on days 2–7. This is listed in the card's `limitations`; show it, don't hide it.
+- **Refresh tokens rotate, and reuse signs the user out everywhere.** Serialise refreshes (one `Authenticator`, with a mutex), and replace both tokens every time.
+- **Polling:** forecasts every 1 s for 10 s, then every 3 s, up to 2 min (§8.9); training every 2–3 s. The user can leave; jobs continue on the server.
+- **Imports are synchronous.** Validation and confirm return when they're done (a few seconds for 10 MB), so show progress during the request. Send one `Idempotency-Key` per user action, and reuse it on retry.
+- **The demo workspace is read-only.** Hide Upload, Train, product editing and Team there, and show "Try replay" instead of Upload (spec §8.4).
 
-### 6.1 Reference workspace dates (put these in the capabilities response)
-
-| As-of date | Model resolved | What the user gets |
-| --- | --- | --- |
-| 2016-05-22 (**default**) | `1.1.0` | True forecast for 2016-05-23 (→ 05-29 for 7 days). No actuals. |
-| 2016-04-24 … 2016-05-21 | `1.1.0-bt` | **Replay**: the backend attaches actuals from `sales_daily`. For 7-day replays with all 7 actuals known, the latest as-of is 2016-05-15. |
-| 2016-03-27 … 2016-04-23 | `1.1.0-dev` | Research-user replays only |
-| before 2016-03-27 | none | `NO_MODEL_FOR_AS_OF` |
-
-The M5 calendar ends 2016-06-19, so the service rejects forecasts past it with `DATE_OUTSIDE_CALENDAR`.
-
-**Actuals for replays come from the backend's own `sales_daily`, not from the ML service.** The backend computes per-run errors with the same definitions (MAE = mean |actual − forecast|) or calls `POST /internal/v1/backtest`.
-
----
-
-## 7. Public API → ML service mapping
-
-| Public endpoint (design §12.1) | Backend does | ML service call |
-| --- | --- | --- |
-| `GET /v1/stores/{sid}/models/capabilities` | Merge the store's mode (reference/own) and AI availability with model capabilities; add the as-of ranges in §6.1 | `GET /models`, `GET /models/{id}/resolve` |
-| `GET /v1/stores/{sid}/models/active` | Model card for the store's model | `GET /models/{id}/{version}/card` |
-| `POST /v1/forecasts` (job worker) | Load ≤ 365 days of history + future prices; call the service; store run + points; attach actuals if replay; attach stored product backtest | `POST /forecast`, then `GET /models/{id}/{bt-version}/backtest?productId=` |
-| `GET /v1/stores/{sid}/readiness` | Freshness (latest day = yesterday in store timezone) is the backend's own check; per-product history, gap and eligibility checks | `POST /eligibility` (own-data) |
-| Product list demand-class chips | Cache per product; refresh after each import | `POST /demand-class` |
-| `POST /v1/stores/{sid}/models/train` | Owner-only; send the store's full history | `POST /train`, poll `GET /train/{jobId}` |
-| Own-data forecast with no active model | Baselines only | `POST /forecast` with `includeAi: false` |
-
-For own-data workspaces the model ID is `own-<workspaceId>`. The service creates it on the first successful training.
-
----
-
-## 8. What the screens should show (backed by real fields)
-
-| Screen element (design section) | Source field |
-| --- | --- |
-| "Tomorrow's expected demand ≈ 48.2 units" (§8.10) | `points[0].ai` |
-| AI vs baseline lines, table (§8.10) | `points[].ai`, `points[].baselines.naive_last_value` (label from `baselineLabels`) |
-| "Based on sales up to 22 May 2016" banner | `asOfDate` |
-| Demand class card | `demandClass.class` + `demandClass.label` |
-| Model name/version in the header and run details | `model.id`, `model.version` |
-| "Experimental" badge | `horizon.validated == false` |
-| "Price assumed unchanged" note | `priceAssumption == "LAST_KNOWN"` |
-| This product's backtest (28 days, 2016-04-25 → 05-22) | stored backtest `product.ai/naive_last_value.{mae, rmse, wape}` |
-| Model card: training data, inputs, limitations | `card.trainedOn`, `card.inputsPlainLanguage`, `card.limitations` |
-| Model card: accuracy by days ahead (a small line chart) | `card.horizonAccuracy.byDay[].aiRmse/naiveRmse` |
-| Model card: overall backtest | `card.backtest.ai` vs `card.backtest.naive_last_value` |
-
-For your understanding only (never hardcode these in the app), the current numbers are:
-- **Store-level next-day backtest:** AI RMSE 2.377 / MAE 1.377 against naive 3.219 / 1.729.
-- **7-day:** AI RMSE rises from 2.34 on day 1 to 2.58 on day 7, against naive 3.19–3.74.
-- **Demand classes:** 925 of the 1,437 demo products are intermittent, so many demo products will show "Sells on some days only".
-
----
-
-## 9. Pitfalls already found
-
-- **Zero vs missing.** Absent days are "not recorded", not zero. The backend must apply the import wizard's answer ("no row means zero sales?") when it stores data, and send explicit `units: 0` for true zeros.
-- **Store timezone defines "a day".** Aggregate transactions per store-local date before storing.
-- **Send history ending exactly at the as-of date.** If the last recorded day is earlier, those days count as gaps and can trigger `TOO_MANY_GAPS`. That is the right behaviour, but the backend's readiness check should catch stale data first, with a clearer message.
-- **Demand class needs history.** With under 30 observed days, or under 5 sale days, the class is `INSUFFICIENT_DATA`.
-- **Decimals are intentional.** "0.4 units" and "1.4 units" are different forecasts. Don't round them away by default.
-- **7-day forecasts run about 4% high** on days 2–7 (recursion bias). This is on the model card's limitations. Don't hide it.
-- **On MAE, naive beats AI for about a quarter of intermittent products.** If a product's stored backtest shows that, say so plainly (design §8.10); it is a valid research outcome.
-- **Own-data training can return `GATE_FAILED`.** That is a normal outcome, not an error. Show "the AI model didn't beat the simple forecast on your recent data", and keep baselines.
-
----
-
-## 10. Files you will need
+## 10. Files
 
 | Path | Why |
 | --- | --- |
-| `retail_demand_forecasting_mobile_design.md` | Full app spec (screens §8, menus §6, design system §7, public API §12.1, acceptance §19) |
-| `docs/ml-service-api.md` | Field-by-field ML service reference (`schemas.py` and `app.py` are the source of truth) |
-| `docs/ml-service-examples/*.json` | Real payloads for fakes and tests |
-| `models/m5-ca1-foods/1.1.0/card.json` | The model card the app renders |
-| `mlengine/config.py` | Thresholds (21-day lookback, 3 gaps, own-data eligibility) |
-| `notebooks/RecursiveHorizon_CA1Foods.ipynb`, `ErrorByDemandClass_CA1Foods.ipynb`, `PortableFeatures_CA1Foods.ipynb` | Evidence behind the 7-day horizon, the demand-class claims and the own-data thresholds |
+| `retail_demand_forecasting_mobile_design.md` | The full app spec: screens §8, menus §6, design system §7, offline §13, security §14, accessibility §16, acceptance §19 |
+| `../SemProject_Backend/docs/api.md` | The API guide (the source of truth for fields and flows) |
+| `../SemProject_Backend/docs/openapi.json` | Generate the client from this |
+| `data/processed/samples/` (after `export-samples`) | Business CSVs for demos and UI tests |
+| `docs/model-card-m5-ca1-foods.md` | What the demo model is, and its limits, in plain language |
+| `docs/notebook-to-production.md` | Background: how the model was built and validated |
 
 ## 11. Do not
 
-- Do not change anything under `mlengine/` or `models/` to make the app work. If the contract needs to change, raise it with the project owner. Model or feature changes need a new model version and the parity tests (`pytest`, `MLENGINE_FULL_TESTS=1 pytest`).
-- Do not expose the ML service publicly or put `ML_SERVICE_TOKEN` in the APK.
-- Do not create XML screen layouts. Screens are Compose inside Fragments (design §4).
-- Do not add forecast horizons, intervals, accuracy claims or explanations that the API does not return.
+- Do not call `/internal/v1/*` or the ML service, and do not put any server secret in the APK.
+- Do not change `SemProject_Backend`, `mlengine/` or `models/` to make the app work. If the contract seems wrong or something is missing, raise it with the project owner. The backend has tests and a committed OpenAPI file that must stay in step.
+- Do not create XML screen layouts. Screens are Compose inside Fragments (spec §4).
+- Do not add horizons, intervals, accuracy claims, "AI insights" or explanations that the API doesn't return.
+- Do not add a `Co-Authored-By` trailer or a "Generated with Claude Code" line to commits or PRs. The project owner asked for none.

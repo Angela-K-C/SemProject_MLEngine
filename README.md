@@ -139,7 +139,7 @@ The full engineering story is in [`docs/notebook-to-production.md`](docs/noteboo
 | [`models/`](models/) | Released model artifacts (`m5-ca1-foods` 1.1.0, 1.1.0-bt, 1.1.0-dev). |
 | [`tests/`](tests/) | Parity, leakage, model and service tests (`pytest`). |
 | [`docs/`](docs/README.md) | Notebook-to-production journey, `mlengine` architecture, ML service API, model card, operations runbook, API examples. |
-| [`retail_demand_forecasting_mobile_design.md`](retail_demand_forecasting_mobile_design.md), [`MOBILE_APP_HANDOFF.md`](MOBILE_APP_HANDOFF.md) | Mobile app design spec and the handoff for the app/backend build. |
+| [`retail_demand_forecasting_mobile_design.md`](retail_demand_forecasting_mobile_design.md), [`MOBILE_APP_HANDOFF.md`](MOBILE_APP_HANDOFF.md) | Mobile app design spec and the handoff for the Android app build (the backend is in `SemProject_Backend`). |
 | [`scripts/make_parity_fixture.py`](scripts/make_parity_fixture.py) | Re-runs the notebook's cells and checks that `mlengine` builds identical features. |
 | [`scripts/preprocess_m5.py`](scripts/preprocess_m5.py) | **Legacy** batch feature preparation with 28-day lags (see the note below). Not used by `mlengine`. |
 | [`requirements.txt`](requirements.txt) | Python dependencies for the notebooks and preprocessing script. |

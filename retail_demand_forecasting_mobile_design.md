@@ -7,7 +7,7 @@
 **Primary implementation:** Kotlin + Jetpack Compose (Material 3)
 **Navigation constraint:** AndroidX Fragments
 **ML engine:** This repository (`SemProject_MLEngine`), package `mlengine/`: Tweedie LightGBM, Stage 3 of the modelling journey in `README.md`. Active model `m5-ca1-foods@1.1.0`.
-**Handoff for the app/backend build:** `MOBILE_APP_HANDOFF.md`
+**Handoff for the Android app build:** `MOBILE_APP_HANDOFF.md`
 **Audience:** Project owner, Android developer, backend/ML developers, and AI coding assistant (Claude)
 
 ---
@@ -44,9 +44,11 @@ The whole model side of this document is built, tested and committed on the `mod
 | Error by demand class | Done (§10.8) | `notebooks/ErrorByDemandClass_CA1Foods.ipynb` |
 | Internal ML service (FastAPI) | Done; reproduces the backtest end to end over HTTP | `mlengine/service/`, `Dockerfile` |
 | Reference workspace seed export | Done | `python -m mlengine export-reference` |
-| **Backend API (§12.1) and Android app** | **Not started** | Next phase. See `MOBILE_APP_HANDOFF.md` |
+| Sample business CSVs (real M5 store TX_1, dates shifted) | Done | `python -m mlengine export-samples` |
+| Backend API (§12.1) | **Done**: FastAPI + PostgreSQL, own JWT sign-in, Docker Compose + Caddy | `../SemProject_Backend` (`docs/api.md` is the API contract) |
+| **Android app** | **Not started** | Next phase. See `MOBILE_APP_HANDOFF.md` |
 
-Where this document and the code disagree, the code and `MOBILE_APP_HANDOFF.md` win. The sections below have been updated to match what was built.
+Where this document and the code disagree, the code and `MOBILE_APP_HANDOFF.md` win; for the public API, `SemProject_Backend/docs/api.md` wins over §12.1. The sections below have been updated to match what was built.
 
 ---
 
@@ -1239,7 +1241,7 @@ Treat this document as the source of truth for scope and architecture.
 | 6 | Commit model artifacts? | **Changed:** committed to Git (about 2.5 MB). Own-data models are not committed. |
 | 7 | Own-data eligibility thresholds? | Set from the simulation: 10 products, 120 days, 4,500 product-days (§9.4.2). |
 
-Still open for the project owner: which backend stack to use (§20 Phase C, see `MOBILE_APP_HANDOFF.md`), and where to host it.
+Backend decisions (made 7 November 2026): FastAPI + PostgreSQL in a separate repository (`SemProject_Backend`), its own email-and-password sign-in with JWTs, hosted on one server with Docker Compose and Caddy.
 
 ---
 

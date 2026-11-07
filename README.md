@@ -111,7 +111,7 @@ Each notebook ends with its own detailed conclusions section.
 
 ### Stage 8: From notebooks to a served model (`mlengine`)
 
-The Stage 3 pipeline is now an importable package, [`mlengine/`](mlengine/), with one feature implementation shared by training and serving. It runs behind an internal HTTP service for the mobile app's backend ([design spec](retail_demand_forecasting_mobile_design.md), [handoff](MOBILE_APP_HANDOFF.md)).
+The full engineering story is in [`docs/notebook-to-production.md`](docs/notebook-to-production.md). In short: the Stage 3 pipeline is now an importable package, [`mlengine/`](mlengine/), with one feature implementation shared by training and serving. It runs behind an internal HTTP service for the mobile app's backend ([design spec](retail_demand_forecasting_mobile_design.md), [handoff](MOBILE_APP_HANDOFF.md)).
 
 - **Parity with the notebook:** features are identical to `LightGBM_BaseLocal.ipynb` over all 2,759,040 rows, and training reproduces 70 trees, dev RMSE 2.356 and backtest RMSE 2.377. The HTTP service reproduces the backtest end to end.
 - **Released model** `m5-ca1-foods@1.1.0` (plus `-dev` and `-bt` versions for leakage-safe replays), committed under [`models/`](models/).
@@ -138,7 +138,7 @@ The Stage 3 pipeline is now an importable package, [`mlengine/`](mlengine/), wit
 | [`mlengine/`](mlengine/) | The production package: features, training, inference, baselines, metrics, model registry, internal ML service. |
 | [`models/`](models/) | Released model artifacts (`m5-ca1-foods` 1.1.0, 1.1.0-bt, 1.1.0-dev). |
 | [`tests/`](tests/) | Parity, leakage, model and service tests (`pytest`). |
-| [`docs/ml-service-examples/`](docs/ml-service-examples/) | Real request/response JSON from the ML service. |
+| [`docs/`](docs/README.md) | Notebook-to-production journey, `mlengine` architecture, ML service API, model card, operations runbook, API examples. |
 | [`retail_demand_forecasting_mobile_design.md`](retail_demand_forecasting_mobile_design.md), [`MOBILE_APP_HANDOFF.md`](MOBILE_APP_HANDOFF.md) | Mobile app design spec and the handoff for the app/backend build. |
 | [`scripts/make_parity_fixture.py`](scripts/make_parity_fixture.py) | Re-runs the notebook's cells and checks that `mlengine` builds identical features. |
 | [`scripts/preprocess_m5.py`](scripts/preprocess_m5.py) | **Legacy** batch feature preparation with 28-day lags (see the note below). Not used by `mlengine`. |

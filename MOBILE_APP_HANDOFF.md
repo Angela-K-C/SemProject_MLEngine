@@ -249,7 +249,7 @@ For your understanding only (never hardcode these in the app), the current numbe
 | Path | Why |
 | --- | --- |
 | `retail_demand_forecasting_mobile_design.md` | Full app spec (screens §8, menus §6, design system §7, public API §12.1, acceptance §19) |
-| `mlengine/service/schemas.py`, `mlengine/service/app.py` | Exact ML service contract |
+| `docs/ml-service-api.md` | Field-by-field ML service reference (`schemas.py` and `app.py` are the source of truth) |
 | `docs/ml-service-examples/*.json` | Real payloads for fakes and tests |
 | `models/m5-ca1-foods/1.1.0/card.json` | The model card the app renders |
 | `mlengine/config.py` | Thresholds (21-day lookback, 3 gaps, own-data eligibility) |

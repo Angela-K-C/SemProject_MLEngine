@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import logging
 from pathlib import Path
@@ -20,6 +21,13 @@ def main(argv: list[str] | None = None) -> None:
     export = sub.add_parser("export-reference", help="Write the Reference workspace seed data for the backend")
     export.add_argument("--out", type=Path, default=None)
     export.add_argument("--raw-dir", type=Path, default=None)
+
+    samples = sub.add_parser("export-samples", help="Write sample business CSVs (real M5 store, shifted dates)")
+    samples.add_argument("--out", type=Path, default=None)
+    samples.add_argument("--raw-dir", type=Path, default=None)
+    samples.add_argument("--store", default="TX_1")
+    samples.add_argument("--end-date", type=dt.date.fromisoformat, default=None,
+                         help="Last day of history (default: yesterday)")
 
     serve = sub.add_parser("serve", help="Run the internal ML service")
     serve.add_argument("--host", default="127.0.0.1")
@@ -39,6 +47,11 @@ def main(argv: list[str] | None = None) -> None:
         from mlengine.pipelines.reference_export import export_reference
 
         for name, path in export_reference(args.out, args.raw_dir).items():
+            print(f"{name}: {path}")
+    elif args.command == "export-samples":
+        from mlengine.pipelines.sample_shops import export_samples
+
+        for name, path in export_samples(args.out, args.raw_dir, args.store, end_date=args.end_date).items():
             print(f"{name}: {path}")
     elif args.command == "serve":
         import uvicorn

@@ -268,6 +268,7 @@ python -m mlengine models                # list registered model versions
 python -m mlengine serve --port 8100     # internal ML service; docs at http://127.0.0.1:8100/docs
 python -m mlengine release-m5            # retrain and re-register the Reference model (~2 min)
 python -m mlengine export-reference      # write the Reference workspace seed data to data/processed/reference/
+python -m mlengine export-samples        # sample business CSVs (real M5 TX_1 sales, dates shifted) for own-data demos
 ```
 
 Set `ML_SERVICE_TOKEN` to require an `X-Internal-Token` header, and `MODEL_REGISTRY_PATH` to serve models from another folder. `docker build -t mlengine-service .` builds the service image.

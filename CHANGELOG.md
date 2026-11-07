@@ -2,6 +2,15 @@
 
 Model versions (`models/`), the `mlengine` package and the documents. Dates are 2026.
 
+## 2026-11-07: Sample business data
+
+- `python -m mlengine export-samples` writes three sample shop CSVs cut from a real M5 store that the Reference model never saw (TX_1 FOODS):
+  - an eligible shop: 100 products × 365 days;
+  - a small shop that isn't eligible yet: 30 × 60;
+  - a messy export with deliberate validation problems.
+- Dates are shifted forward by whole weeks so the history ends yesterday. Weekdays stay aligned; holidays don't.
+- Checked: the eligible shop passes the own-data gate (AI RMSE 2.50 vs naive 3.06; MAE 1.31 vs 1.57) with horizons 1 and 7. The small shop is `NOT_ELIGIBLE`. Covered by `tests/test_full_data.py::test_sample_shops`.
+
 ## 2026-11-07: `m5-ca1-foods` 1.1.0
 
 - **Horizon 7 enabled.** The recursive 7-day forecast beat both baselines (aggregate RMSE 2.472 vs 3.176 seasonal naive and 3.489 naive; `notebooks/RecursiveHorizon_CA1Foods.ipynb`). The release pipeline now runs this check itself and publishes accuracy per horizon day on the model card (`card.horizonAccuracy`).

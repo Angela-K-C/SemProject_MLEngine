@@ -57,3 +57,35 @@ def test_service_backtest_reproduces_stage3(released, monkeypatch):
     assert data["model"]["version"] == "1.1.0-bt"
     assert data["overall"]["ai"]["rmse"] == pytest.approx(2.377, abs=0.005)
     assert data["overall"]["naive_last_value"]["rmse"] == pytest.approx(3.219, abs=0.005)
+
+
+def test_sample_shops(tmp_path):
+    """The eligible sample trains and passes the gate; the small one isn't eligible; the messy one is messy."""
+    import datetime as dt
+
+    import pandas as pd
+
+    from mlengine.pipelines.own_data import train_own_data
+    from mlengine.pipelines.sample_shops import export_samples
+
+    end = dt.date(2026, 11, 6)
+    files = export_samples(tmp_path, end_date=end)
+    eligible = pd.read_csv(files["sample_shop_eligible"])
+    assert eligible["sales_date"].max() == "2026-11-06" and eligible["product_id"].nunique() == 100
+    assert pd.Timestamp("2026-11-06").weekday() == pd.Timestamp("2016-05-20").weekday()
+
+    def zero_filled(frame):
+        frame = frame.assign(date=pd.to_datetime(frame["sales_date"]))
+        last, parts = frame["date"].max(), []
+        for pid, g in frame.groupby("product_id"):
+            g = g.set_index("date").reindex(pd.date_range(g["date"].min(), last))
+            g = g.assign(units_sold=g["units_sold"].fillna(0), unit_price=g["unit_price"].ffill(),
+                         category=g["category"].ffill(), product_id=pid)
+            parts.append(g.rename_axis("date").reset_index())
+        return pd.concat(parts).assign(store_id="S")
+
+    result = train_own_data(zero_filled(eligible), "sample", "US", "TX", registry_dir=tmp_path / "reg", register=False)
+    assert result["gate"]["passed"] and result["horizons"] == [1, 7]
+    small = pd.read_csv(files["sample_shop_small"]).rename(columns={"sales_date": "date"}).assign(store_id="S")
+    assert train_own_data(small, "small", register=False)["status"] == "NOT_ELIGIBLE"
+    assert files["sample_shop_messy"].read_text().startswith("Date;Item Name;Department;Qty;Price")

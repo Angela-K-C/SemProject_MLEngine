@@ -23,6 +23,7 @@ The raw M5 CSVs (see the README) are needed only to retrain, regenerate the pari
 | Retrain and register the Reference model | `python -m mlengine release-m5 --version X.Y.Z` | ~2 min, ~2.3 GB |
 | Re-check features against the notebook | `python scripts/make_parity_fixture.py` | ~3 min |
 | Export Reference seed data | `python -m mlengine export-reference [--out DIR]` | ~1 min; writes ~100 MB CSV + Parquet |
+| Export sample business CSVs | `python -m mlengine export-samples [--store TX_1] [--end-date YYYY-MM-DD]` | ~20 s; writes `data/processed/samples/` (3 CSVs, manifest, README). Re-run so the history ends yesterday |
 | Re-run an experiment notebook | `jupyter nbconvert --to notebook --execute --inplace notebooks/<name>.ipynb` | 1–3 min each |
 
 ## Configuration

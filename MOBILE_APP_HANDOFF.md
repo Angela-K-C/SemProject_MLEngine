@@ -17,6 +17,7 @@ Read this file first. Then read `retail_demand_forecasting_mobile_design.md` (v2
 | Released model `m5-ca1-foods@1.1.0` (+ `1.1.0-bt`, `1.1.0-dev`) | **Done, committed** | `models/m5-ca1-foods/` (about 2.5 MB; no raw data needed to serve) |
 | Internal ML service (FastAPI) | **Done, tested** | `mlengine/service/`, `Dockerfile` |
 | Reference workspace seed data | **Done** (generated, not committed) | `python -m mlengine export-reference` |
+| Sample business CSVs (own-data demos) | **Done** (generated, not committed) | `python -m mlengine export-samples`: see `data/processed/samples/README.md` for the wizard answers |
 | **Backend API** (app ↔ backend, design §12.1) | **Slice 1 done** (auth, demo workspace, forecast jobs); imports and own-data training not yet built | Separate repo `../SemProject_Backend`: start with its `docs/api.md` and `docs/openapi.json` |
 | **Android app** | **Not started** | Your main job |
 

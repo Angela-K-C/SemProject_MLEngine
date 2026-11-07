@@ -15,3 +15,11 @@ statsmodels>=0.14,<1.0
 lightgbm>=4.5,<5.0
 xgboost>=2.1,<4.0
 pyarrow>=18,<25
+
+# mlengine package and internal ML service
+holidays>=0.50
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+pytest>=8
+httpx>=0.27

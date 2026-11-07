@@ -31,7 +31,7 @@ FIXTURE_ITEMS = 25
 
 
 def run_notebook_cells() -> dict:
-    cells = json.loads(NOTEBOOK.read_text())["cells"]
+    cells = json.loads(NOTEBOOK.read_text(encoding="utf-8"))["cells"]
     namespace: dict = {"display": lambda *args, **kwargs: None}
     previous = Path.cwd()
     os.chdir(ROOT / "notebooks")

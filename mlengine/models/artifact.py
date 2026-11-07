@@ -97,8 +97,8 @@ def save_artifact(
         "createdAt": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "gitCommit": git_commit(),
     }
-    (path / "metadata.json").write_text(json.dumps(metadata, indent=2, default=str))
-    (path / "card.json").write_text(json.dumps(card or {}, indent=2, default=str))
+    (path / "metadata.json").write_text(json.dumps(metadata, indent=2, default=str), encoding="utf-8")
+    (path / "card.json").write_text(json.dumps(card or {}, indent=2, default=str), encoding="utf-8")
     for name, frame in (frames or {}).items():
         target = path / f"{name}.parquet"
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -108,9 +108,9 @@ def save_artifact(
 
 def load_artifact(path: Path) -> ModelArtifact:
     path = Path(path)
-    metadata = json.loads((path / "metadata.json").read_text())
+    metadata = json.loads((path / "metadata.json").read_text(encoding="utf-8"))
     card_file = path / "card.json"
-    card = json.loads(card_file.read_text()) if card_file.is_file() else {}
+    card = json.loads(card_file.read_text(encoding="utf-8")) if card_file.is_file() else {}
     return ModelArtifact(path=path, metadata=metadata, card=card)
 
 

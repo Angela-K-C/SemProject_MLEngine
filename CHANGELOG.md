@@ -9,6 +9,7 @@ Model versions (`models/`), the `mlengine` package and the documents. Dates are 
   - a small shop that isn't eligible yet: 30 × 60;
   - a messy export with deliberate validation problems.
 - Dates are shifted forward by whole weeks so the history ends yesterday. Weekdays stay aligned; holidays don't.
+- Fix: `scikit-learn` added to the package dependencies (`pyproject.toml`). Training uses LightGBM's scikit-learn interface; it was only in `requirements.txt`, so own-data training failed inside the Docker image. Found by the backend's end-to-end training run.
 - Checked: the eligible shop passes the own-data gate (AI RMSE 2.50 vs naive 3.06; MAE 1.31 vs 1.57) with horizons 1 and 7. The small shop is `NOT_ELIGIBLE`. Covered by `tests/test_full_data.py::test_sample_shops`.
 
 ## 2026-11-07: `m5-ca1-foods` 1.1.0

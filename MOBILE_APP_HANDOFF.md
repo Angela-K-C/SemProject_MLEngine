@@ -18,7 +18,7 @@ Read this file first. Then read `retail_demand_forecasting_mobile_design.md` (v2
 | Internal ML service (FastAPI) | **Done, tested** | `mlengine/service/`, `Dockerfile` |
 | Reference workspace seed data | **Done** (generated, not committed) | `python -m mlengine export-reference` |
 | Sample business CSVs (own-data demos) | **Done** (generated, not committed) | `python -m mlengine export-samples`: see `data/processed/samples/README.md` for the wizard answers |
-| **Backend API** (app ↔ backend, design §12.1) | **Slice 1 done** (auth, demo workspace, forecast jobs); imports and own-data training not yet built | Separate repo `../SemProject_Backend`: start with its `docs/api.md` and `docs/openapi.json` |
+| **Backend API** (app ↔ backend, design §12.1) | **Slices 1–3 done**: auth, demo workspace, forecast jobs, CSV imports, own-data training | Separate repo `../SemProject_Backend`: start with its `docs/api.md` and `docs/openapi.json` |
 | **Android app** | **Not started** | Your main job |
 
 Proven on the model side:
@@ -78,13 +78,13 @@ The Android emulator reaches the host machine at `10.0.2.2`. That address is for
 
 ## 4. Recommended build order
 
-The backend is a separate repository, `../SemProject_Backend` (FastAPI + PostgreSQL, its own sign-in, Docker Compose + Caddy on one server). Slice 1 is built and tested end to end against this ML service: auth, workspaces/stores/products, demo seeding, history, readiness, capabilities, model card, forecast jobs, history and CSV export. **The app should call the backend as documented in `SemProject_Backend/docs/api.md`**, and generate its network client from `SemProject_Backend/docs/openapi.json`. Where that guide differs from design §12.1 (for example, IDs are UUIDs, and the SKU is a separate `sku` field), the guide is correct.
+The backend is a separate repository, `../SemProject_Backend` (FastAPI + PostgreSQL, its own sign-in, Docker Compose + Caddy on one server). Slices 1–3 are built and tested end to end against this ML service, in Docker: auth, workspaces/stores/products, demo seeding, history, readiness, capabilities, model card, forecast jobs, history and CSV export, CSV imports, and own-data training. The sample shop CSVs (`python -m mlengine export-samples`) give you realistic business data to demo imports and training. **The app should call the backend as documented in `SemProject_Backend/docs/api.md`**, and generate its network client from `SemProject_Backend/docs/openapi.json`. Where that guide differs from design §12.1 (for example, IDs are UUIDs, and the SKU is a separate `sku` field), the guide is correct.
 
 1. ~~Backend skeleton~~ and 2. ~~Forecast path for the Reference workspace~~: **done** (backend slice 1).
 3. **Android foundation.** Shell, theme, Fragments + `ComposeView`, navigation, the three menus, state components (design §4–§7, §20 Phase D).
 4. **Android forecast flow against the real backend.** Products → configure → progress → results → history → model info.
-5. **Imports** (backend slice 2, CSV wizard, validation, readiness) for own-data workspaces. Baseline-only forecasts (`includeAi: false`).
-6. **Own-data AI** (backend slice 3). Eligibility, the training job, and showing the gate result (§5.6).
+5. **Imports** (backend slice 2 is done): CSV wizard, validation report, readiness. Baseline-only forecasts until a model is trained.
+6. **Own-data AI** (backend slice 3 is done): eligibility progress, the training job, and showing the gate result (§5.6).
 
 If the backend must lag behind, build the app against a **fake repository** that returns the real example JSON from `docs/ml-service-examples/`, reshaped into the public API, and label it clearly as sample data in the UI.
 

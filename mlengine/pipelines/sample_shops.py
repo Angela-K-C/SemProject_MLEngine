@@ -191,7 +191,9 @@ def _readme(manifest: dict) -> str:
     lines = ["# Sample shops", "", manifest["note"], "", f"Source: {manifest['source']}. "
              f"Dates shifted by {manifest['dateShiftDays']} days (original end {manifest['originalEndDate']}).", "",
              "Create a store with country `US`, subdivision `" + manifest["suggestedStore"]["subdivision"] + "`, "
-             "currency `USD`, then upload a file through the import wizard with these answers:", ""]
+             "currency `USD`, then upload a file through the import wizard with these answers:", "",
+             "Real sales have real spikes, so the validation report flags some days as SPIKE and the import shows "
+             "Needs Attention. That's expected: spikes are kept as they are, and you can import the file.", ""]
     for name, info in manifest["files"].items():
         answer = "Yes" if info["wizard"]["missingDaysAreZero"] else "No"
         lines += [f"## `{name}`", "", info["purpose"], "",

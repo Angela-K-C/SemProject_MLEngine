@@ -12,6 +12,7 @@ dependencies = [
     "pandas>=2.2,<3.0",
     "pyarrow>=18,<25",
     "lightgbm>=4.5,<5.0",
+    "scikit-learn>=1.5,<2.0",  # LGBMRegressor (training) needs it
     "holidays>=0.50",
 ]
 

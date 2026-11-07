@@ -1,0 +1,222 @@
+{
+  "title": "Demand model: LightGBM (Tweedie)",
+  "model": "m5-ca1-foods@1.1.0-bt",
+  "trainedOn": {
+    "data": "M5 Forecasting \u2013 Accuracy (Walmart), store CA_1, FOODS category",
+    "products": 1437,
+    "startDate": "2011-02-19",
+    "endDate": "2016-04-24",
+    "source": "https://www.kaggle.com/competitions/m5-forecasting-accuracy"
+  },
+  "predicts": "Expected units sold per product per day.",
+  "horizonDays": [
+    1,
+    7
+  ],
+  "inputsPlainLanguage": [
+    "Sales over the last 1, 7, 14 and 21 days",
+    "Average and variability of sales over the last 3, 7 and 14 days",
+    "Day of week, day of month, month and year",
+    "US holidays and events, and SNAP food-assistance days in California",
+    "The product's price and how long it has been on sale"
+  ],
+  "backtest": {
+    "window": {
+      "startDay": 1914,
+      "endDay": 1941,
+      "startDate": "2016-04-25",
+      "endDate": "2016-05-22"
+    },
+    "series": "all CA_1 FOODS items",
+    "modelVersion": "m5-ca1-foods@1.1.0-bt",
+    "oneStepAhead": true,
+    "ai": {
+      "n": 40236,
+      "mae": 1.3765728687756547,
+      "rmse": 2.3772961558906966,
+      "wape": 0.6097760279640355
+    },
+    "naive_last_value": {
+      "n": 40236,
+      "mae": 1.7285018391490208,
+      "rmse": 3.2185912995090997,
+      "wape": 0.765668864839871
+    },
+    "seasonal_naive_7": {
+      "n": 40236,
+      "mae": 1.748135997614077,
+      "rmse": 3.1793413707628377,
+      "wape": 0.7743661444629154
+    },
+    "byDemandClass": {
+      "ERRATIC": {
+        "products": 37,
+        "ai": {
+          "n": 1036,
+          "mae": 2.992158679642553,
+          "rmse": 5.155924956125429,
+          "wape": 0.5111090506363867
+        },
+        "naive_last_value": {
+          "n": 1036,
+          "mae": 3.8474903474903477,
+          "rmse": 6.55478839973122,
+          "wape": 0.6572135201978565
+        },
+        "seasonal_naive_7": {
+          "n": 1036,
+          "mae": 4.032818532818533,
+          "rmse": 6.651414341424893,
+          "wape": 0.6888705688375928
+        }
+      },
+      "INSUFFICIENT_DATA": {
+        "products": 5,
+        "ai": {
+          "n": 140,
+          "mae": 1.0119171852357178,
+          "rmse": 1.6896625667348573,
+          "wape": 0.885427537081253
+        },
+        "naive_last_value": {
+          "n": 140,
+          "mae": 1.2142857142857142,
+          "rmse": 2.2038926600773587,
+          "wape": 1.0625
+        },
+        "seasonal_naive_7": {
+          "n": 140,
+          "mae": 1.1857142857142857,
+          "rmse": 2.3145502494313788,
+          "wape": 1.0375
+        }
+      },
+      "INTERMITTENT": {
+        "products": 925,
+        "ai": {
+          "n": 25900,
+          "mae": 1.0346367269013268,
+          "rmse": 1.5825359617651584,
+          "wape": 0.7638416061440159
+        },
+        "naive_last_value": {
+          "n": 25900,
+          "mae": 1.2494980694980695,
+          "rmse": 2.1151412231391062,
+          "wape": 0.9224673621800353
+        },
+        "seasonal_naive_7": {
+          "n": 25900,
+          "mae": 1.2798841698841699,
+          "rmse": 2.208888677409794,
+          "wape": 0.9449005187845619
+        }
+      },
+      "LUMPY": {
+        "products": 249,
+        "ai": {
+          "n": 6972,
+          "mae": 1.4851762987691433,
+          "rmse": 2.643267122100823,
+          "wape": 0.8542030320919376
+        },
+        "naive_last_value": {
+          "n": 6972,
+          "mae": 1.8221457257601836,
+          "rmse": 3.5418974141023964,
+          "wape": 1.04801187922785
+        },
+        "seasonal_naive_7": {
+          "n": 6972,
+          "mae": 1.8389271371199083,
+          "rmse": 3.365585507171296,
+          "wape": 1.0576637518561294
+        }
+      },
+      "SMOOTH": {
+        "products": 221,
+        "ai": {
+          "n": 6188,
+          "mae": 2.423157848780175,
+          "rmse": 3.7253413194601404,
+          "wape": 0.4008796056104086
+        },
+        "naive_last_value": {
+          "n": 6188,
+          "mae": 3.284744667097608,
+          "rmse": 5.21499627677474,
+          "wape": 0.5434178162763341
+        },
+        "seasonal_naive_7": {
+          "n": 6188,
+          "mae": 3.235940530058177,
+          "rmse": 5.001389593586871,
+          "wape": 0.5353438134958828
+        }
+      }
+    }
+  },
+  "horizonAccuracy": {
+    "description": "Accuracy by days ahead for 7-day forecasts (22 forecast dates, all products, 2016-04-25 to 2016-05-22).",
+    "validated": true,
+    "byDay": [
+      {
+        "day": 1,
+        "aiRmse": 2.3370911777001453,
+        "aiMae": 1.3735758976256338,
+        "naiveRmse": 3.1941410192354254,
+        "naiveMae": 1.740210033529449
+      },
+      {
+        "day": 2,
+        "aiRmse": 2.395812147577676,
+        "aiMae": 1.4381345445106972,
+        "naiveRmse": 3.506818995157018,
+        "naiveMae": 1.8799898779021953
+      },
+      {
+        "day": 3,
+        "aiRmse": 2.4691100897160116,
+        "aiMae": 1.454068112295674,
+        "naiveRmse": 3.698453748742476,
+        "naiveMae": 1.9357246789397102
+      },
+      {
+        "day": 4,
+        "aiRmse": 2.4821369229205983,
+        "aiMae": 1.4636955807304717,
+        "naiveRmse": 3.738117760040392,
+        "naiveMae": 1.9376542038337445
+      },
+      {
+        "day": 5,
+        "aiRmse": 2.5043843145504443,
+        "aiMae": 1.4778681850930337,
+        "naiveRmse": 3.6136659559296715,
+        "naiveMae": 1.898019864616942
+      },
+      {
+        "day": 6,
+        "aiRmse": 2.5290827913538934,
+        "aiMae": 1.4930526045980448,
+        "naiveRmse": 3.376020402741474,
+        "naiveMae": 1.837445435566521
+      },
+      {
+        "day": 7,
+        "aiRmse": 2.579878842893549,
+        "aiMae": 1.5053709492105276,
+        "naiveRmse": 3.256956970864853,
+        "naiveMae": 1.7919276270006959
+      }
+    ]
+  },
+  "limitations": [
+    "Validated on grocery (FOODS) products in one store only.",
+    "Less precise for products that sell on only some days (intermittent demand).",
+    "Accuracy falls slowly with distance: days 2\u20137 are forecast from the model's own earlier predictions and run about 4% high on average. Beyond 7 days forecasts are experimental.",
+    "Gives a single expected value, with no uncertainty range.",
+    "Only valid for products in the M5 CA_1 FOODS catalogue."
+  ],
+  "note": "Backtest model: used for replays with as-of dates from 2016-04-24 to 2016-05-21."
+}

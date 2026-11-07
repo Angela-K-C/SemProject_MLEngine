@@ -54,6 +54,6 @@ def test_service_backtest_reproduces_stage3(released, monkeypatch):
     response = TestClient(service.app).post("/internal/v1/backtest", json={
         "model": {"id": "m5-ca1-foods"}, "startDate": "2016-04-25", "endDate": "2016-05-22", "series": series})
     data = response.json()
-    assert data["model"]["version"] == "1.0.0-bt"
+    assert data["model"]["version"] == "1.1.0-bt"
     assert data["overall"]["ai"]["rmse"] == pytest.approx(2.377, abs=0.005)
     assert data["overall"]["naive_last_value"]["rmse"] == pytest.approx(3.219, abs=0.005)

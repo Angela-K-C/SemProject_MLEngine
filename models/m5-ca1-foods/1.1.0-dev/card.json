@@ -1,6 +1,6 @@
 {
   "title": "Demand model: LightGBM (Tweedie)",
-  "model": "m5-ca1-foods@1.0.0-dev",
+  "model": "m5-ca1-foods@1.1.0-dev",
   "trainedOn": {
     "data": "M5 Forecasting \u2013 Accuracy (Walmart), store CA_1, FOODS category",
     "products": 1437,
@@ -27,7 +27,7 @@
       "endDate": "2016-04-24"
     },
     "series": "all CA_1 FOODS items",
-    "modelVersion": "m5-ca1-foods@1.0.0-dev",
+    "modelVersion": "m5-ca1-foods@1.1.0-dev",
     "oneStepAhead": true,
     "ai": {
       "n": 40236,
@@ -48,10 +48,11 @@
       "wape": 0.7957669957953418
     }
   },
+  "horizonAccuracy": null,
   "limitations": [
     "Validated on grocery (FOODS) products in one store only.",
     "Less precise for products that sell on only some days (intermittent demand).",
-    "Validated for next-day forecasts; longer horizons are experimental.",
+    "Accuracy falls slowly with distance: days 2\u20137 are forecast from the model's own earlier predictions and run about 4% high on average. Beyond 7 days forecasts are experimental.",
     "Gives a single expected value, with no uncertainty range.",
     "Only valid for products in the M5 CA_1 FOODS catalogue."
   ],

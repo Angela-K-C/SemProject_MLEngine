@@ -15,6 +15,8 @@ def test_training_passes_gate_and_registers(own_data_registry):
     artifact = ModelRegistry(root).resolve("own-ws_test", dt.date(2025, 7, 19))
     assert artifact.schema == "portable-v1"
     assert artifact.metadata["training"]["country"] == "KE"
+    assert result["recursive"]["horizon"] == 7
+    assert artifact.capabilities["horizons"] == result["horizons"]
 
 
 def test_not_eligible_with_short_history(tmp_path):

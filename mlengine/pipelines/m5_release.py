@@ -19,18 +19,21 @@ import numpy as np
 import pandas as pd
 
 from mlengine import config
-from mlengine.data.m5 import load_m5_scope
+from mlengine.data.m5 import daily_price_matrix, load_m5_scope, scope_to_batch
+from mlengine.evaluation.backtest import recursive_backtest
 from mlengine.evaluation import metrics
 from mlengine.evaluation.demand_class import classify_matrix
 from mlengine.features import m5_v1
 from mlengine.models import train
-from mlengine.models.artifact import save_artifact
+from mlengine.models.artifact import load_artifact, save_artifact
+from mlengine.models.forecaster import Forecaster
 
 log = logging.getLogger(__name__)
 
 MODEL_ID = "m5-ca1-foods"
-VALIDATED_HORIZONS = [1]
+CANDIDATE_HORIZON = 7  # enabled only if the recursive backtest validates it
 EXPERIMENTAL_MAX_HORIZON = 28
+RECURSIVE_ORIGINS = range(config.M5_BACKTEST[0] - 1, config.M5_BACKTEST[1] - CANDIDATE_HORIZON + 1)
 
 
 def _metrics_block(frame: pd.DataFrame, ai: np.ndarray, window: tuple[int, int], model_ref: str) -> dict:
@@ -70,7 +73,18 @@ def _classes(scope, up_to_day: int) -> pd.DataFrame:
     return frame.rename(columns={"class": "demand_class", "label": "demand_label"})
 
 
-def _card(version_ref: str, training: dict, backtest: dict | None, horizons: list[int], note: str) -> dict:
+def _card(version_ref: str, training: dict, backtest: dict | None, horizons: list[int], note: str,
+          recursive: dict | None = None) -> dict:
+    horizon_accuracy = None
+    if recursive is not None:
+        horizon_accuracy = {
+            "description": f"Accuracy by days ahead for {recursive['horizon']}-day forecasts "
+                           f"({recursive['origins']} forecast dates, all products, 2016-04-25 to 2016-05-22).",
+            "validated": recursive["validated"],
+            "byDay": [{"day": d["day"], "aiRmse": d["ai"]["rmse"], "aiMae": d["ai"]["mae"],
+                       "naiveRmse": d["naive_last_value"]["rmse"], "naiveMae": d["naive_last_value"]["mae"]}
+                      for d in recursive["byDay"]],
+        }
     return {
         "title": "Demand model: LightGBM (Tweedie)",
         "model": version_ref,
@@ -89,10 +103,12 @@ def _card(version_ref: str, training: dict, backtest: dict | None, horizons: lis
             "The product's price and how long it has been on sale",
         ],
         "backtest": backtest,
+        "horizonAccuracy": horizon_accuracy,
         "limitations": [
             "Validated on grocery (FOODS) products in one store only.",
             "Less precise for products that sell on only some days (intermittent demand).",
-            "Validated for next-day forecasts; longer horizons are experimental.",
+            "Accuracy falls slowly with distance: days 2–7 are forecast from the model's own earlier "
+            "predictions and run about 4% high on average. Beyond 7 days forecasts are experimental.",
             "Gives a single expected value, with no uncertainty range.",
             "Only valid for products in the M5 CA_1 FOODS catalogue.",
         ],
@@ -100,7 +116,7 @@ def _card(version_ref: str, training: dict, backtest: dict | None, horizons: lis
     }
 
 
-def release(registry_dir: Path | None = None, version: str = "1.0.0", raw_dir: Path | None = None) -> dict:
+def release(registry_dir: Path | None = None, version: str = "1.1.0", raw_dir: Path | None = None) -> dict:
     registry_dir = Path(registry_dir or config.model_registry_dir())
     out_dir = registry_dir / MODEL_ID
     log.info("Loading M5 scope…")
@@ -129,7 +145,7 @@ def release(registry_dir: Path | None = None, version: str = "1.0.0", raw_dir: P
                 "endDate": str(config.m5_day_to_date(end_day)), "rows": rows,
             },
             "capabilities": {
-                "horizons": VALIDATED_HORIZONS, "experimentalMaxHorizon": EXPERIMENTAL_MAX_HORIZON,
+                "horizons": horizons, "experimentalMaxHorizon": EXPERIMENTAL_MAX_HORIZON,
                 "frequency": "DAILY", "minHistoryDays": config.LOOKBACK_DAYS,
                 "maxMissingDaysInLookback": config.MAX_MISSING_DAYS_IN_LOOKBACK,
                 "predictionIntervals": False, "baselines": ["naive_last_value", "seasonal_naive_7"],
@@ -140,6 +156,7 @@ def release(registry_dir: Path | None = None, version: str = "1.0.0", raw_dir: P
 
     calendar_frame = scope.calendar.copy()
     results: dict = {}
+    horizons = [1]
 
     # 1. Development model (early stopping) ---------------------------------------------------
     log.info("Training development model…")
@@ -153,7 +170,7 @@ def release(registry_dir: Path | None = None, version: str = "1.0.0", raw_dir: P
     dev_training = metadata(f"{version}-dev", config.M5_DEV_TRAIN_END, n_trees, len(dev_train),
                             {"evaluation": {"development": dev_block}})
     save_artifact(out_dir / f"{version}-dev", dev_model.booster_, dev_training,
-                  _card(f"{MODEL_ID}@{version}-dev", dev_training["training"], dev_block, VALIDATED_HORIZONS,
+                  _card(f"{MODEL_ID}@{version}-dev", dev_training["training"], dev_block, [1],
                         "Development model: used for replays with as-of dates from 2016-03-27 to 2016-04-23."),
                   {"calendar": calendar_frame}, num_iteration=n_trees)
 
@@ -178,8 +195,33 @@ def release(registry_dir: Path | None = None, version: str = "1.0.0", raw_dir: P
     frames = {"calendar": calendar_frame, "backtest/per_product": per_product,
               "backtest/predictions": predictions}
     save_artifact(out_dir / f"{version}-bt", bt_model.booster_, bt_meta,
-                  _card(f"{MODEL_ID}@{version}-bt", bt_meta["training"], bt_block, VALIDATED_HORIZONS,
+                  _card(f"{MODEL_ID}@{version}-bt", bt_meta["training"], bt_block, [1],
                         "Backtest model: used for replays with as-of dates from 2016-04-24 to 2016-05-21."),
+                  frames)
+    (out_dir / f"{version}-bt" / "backtest" / "summary.json").write_text(json.dumps(bt_block, indent=2))
+
+    log.info("Recursive %s-day backtest…", CANDIDATE_HORIZON)
+    bt_artifact = load_artifact(out_dir / f"{version}-bt")
+    prices = daily_price_matrix(scope)
+
+    def build(origin: int):
+        batch = scope_to_batch(scope, origin, 365, CANDIDATE_HORIZON, daily_prices=prices)
+        return batch, scope.sales[:, origin : origin + CANDIDATE_HORIZON]
+
+    recursive = recursive_backtest(Forecaster(bt_artifact), build, RECURSIVE_ORIGINS, CANDIDATE_HORIZON)
+    results["recursive"] = recursive
+    if recursive["validated"]:
+        horizons = [1, CANDIDATE_HORIZON]
+    bt_meta["capabilities"]["horizons"] = horizons
+    dev_meta_file = out_dir / f"{version}-dev" / "metadata.json"
+    dev_meta = json.loads(dev_meta_file.read_text())
+    dev_meta["capabilities"]["horizons"] = horizons  # same recipe; validated by the recursive backtest
+    dev_meta_file.write_text(json.dumps(dev_meta, indent=2, default=str))
+    bt_meta["evaluation"]["recursive"] = recursive
+    save_artifact(out_dir / f"{version}-bt", bt_model.booster_, bt_meta,
+                  _card(f"{MODEL_ID}@{version}-bt", bt_meta["training"], bt_block, horizons,
+                        "Backtest model: used for replays with as-of dates from 2016-04-24 to 2016-05-21.",
+                        recursive),
                   frames)
     (out_dir / f"{version}-bt" / "backtest" / "summary.json").write_text(json.dumps(bt_block, indent=2))
 
@@ -188,13 +230,13 @@ def release(registry_dir: Path | None = None, version: str = "1.0.0", raw_dir: P
     full = frame.loc[day.between(config.M5_FEATURE_START_DAY, config.M5_LAST_OBSERVED_DAY)]
     prod_model = train.fit_fixed(full[columns], full["sales"], n_trees)
     prod_meta = metadata(version, config.M5_LAST_OBSERVED_DAY, n_trees, len(full),
-                         {"evaluation": {"development": dev_block, "backtest": bt_block,
+                         {"evaluation": {"development": dev_block, "backtest": bt_block, "recursive": recursive,
                                          "backtestNote": f"Measured with {MODEL_ID}@{version}-bt, which was "
                                                          "trained on the same recipe up to 2016-04-24."}})
     current_classes = _classes(scope, config.M5_LAST_OBSERVED_DAY)
     save_artifact(out_dir / version, prod_model.booster_, prod_meta,
-                  _card(f"{MODEL_ID}@{version}", prod_meta["training"], bt_block, VALIDATED_HORIZONS,
-                        "Active model: true forecasts from 2016-05-22 (the last day of observed sales)."),
+                  _card(f"{MODEL_ID}@{version}", prod_meta["training"], bt_block, horizons,
+                        "Active model: true forecasts from 2016-05-22 (the last day of observed sales).", recursive),
                   {"calendar": calendar_frame, "backtest/per_product": per_product,
                    "demand_classes": current_classes})
     (out_dir / version / "backtest" / "summary.json").write_text(json.dumps(bt_block, indent=2))

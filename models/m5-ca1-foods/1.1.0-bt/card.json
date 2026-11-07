@@ -1,16 +1,17 @@
 {
   "title": "Demand model: LightGBM (Tweedie)",
-  "model": "m5-ca1-foods@1.0.0",
+  "model": "m5-ca1-foods@1.1.0-bt",
   "trainedOn": {
     "data": "M5 Forecasting \u2013 Accuracy (Walmart), store CA_1, FOODS category",
     "products": 1437,
     "startDate": "2011-02-19",
-    "endDate": "2016-05-22",
+    "endDate": "2016-04-24",
     "source": "https://www.kaggle.com/competitions/m5-forecasting-accuracy"
   },
   "predicts": "Expected units sold per product per day.",
   "horizonDays": [
-    1
+    1,
+    7
   ],
   "inputsPlainLanguage": [
     "Sales over the last 1, 7, 14 and 21 days",
@@ -27,7 +28,7 @@
       "endDate": "2016-05-22"
     },
     "series": "all CA_1 FOODS items",
-    "modelVersion": "m5-ca1-foods@1.0.0-bt",
+    "modelVersion": "m5-ca1-foods@1.1.0-bt",
     "oneStepAhead": true,
     "ai": {
       "n": 40236,
@@ -155,12 +156,67 @@
       }
     }
   },
+  "horizonAccuracy": {
+    "description": "Accuracy by days ahead for 7-day forecasts (22 forecast dates, all products, 2016-04-25 to 2016-05-22).",
+    "validated": true,
+    "byDay": [
+      {
+        "day": 1,
+        "aiRmse": 2.3370911777001453,
+        "aiMae": 1.3735758976256338,
+        "naiveRmse": 3.1941410192354254,
+        "naiveMae": 1.740210033529449
+      },
+      {
+        "day": 2,
+        "aiRmse": 2.395812147577676,
+        "aiMae": 1.4381345445106972,
+        "naiveRmse": 3.506818995157018,
+        "naiveMae": 1.8799898779021953
+      },
+      {
+        "day": 3,
+        "aiRmse": 2.4691100897160116,
+        "aiMae": 1.454068112295674,
+        "naiveRmse": 3.698453748742476,
+        "naiveMae": 1.9357246789397102
+      },
+      {
+        "day": 4,
+        "aiRmse": 2.4821369229205983,
+        "aiMae": 1.4636955807304717,
+        "naiveRmse": 3.738117760040392,
+        "naiveMae": 1.9376542038337445
+      },
+      {
+        "day": 5,
+        "aiRmse": 2.5043843145504443,
+        "aiMae": 1.4778681850930337,
+        "naiveRmse": 3.6136659559296715,
+        "naiveMae": 1.898019864616942
+      },
+      {
+        "day": 6,
+        "aiRmse": 2.5290827913538934,
+        "aiMae": 1.4930526045980448,
+        "naiveRmse": 3.376020402741474,
+        "naiveMae": 1.837445435566521
+      },
+      {
+        "day": 7,
+        "aiRmse": 2.579878842893549,
+        "aiMae": 1.5053709492105276,
+        "naiveRmse": 3.256956970864853,
+        "naiveMae": 1.7919276270006959
+      }
+    ]
+  },
   "limitations": [
     "Validated on grocery (FOODS) products in one store only.",
     "Less precise for products that sell on only some days (intermittent demand).",
-    "Validated for next-day forecasts; longer horizons are experimental.",
+    "Accuracy falls slowly with distance: days 2\u20137 are forecast from the model's own earlier predictions and run about 4% high on average. Beyond 7 days forecasts are experimental.",
     "Gives a single expected value, with no uncertainty range.",
     "Only valid for products in the M5 CA_1 FOODS catalogue."
   ],
-  "note": "Active model: true forecasts from 2016-05-22 (the last day of observed sales)."
+  "note": "Backtest model: used for replays with as-of dates from 2016-04-24 to 2016-05-21."
 }

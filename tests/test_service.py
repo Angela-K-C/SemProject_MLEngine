@@ -48,6 +48,7 @@ def test_forecast_compare(client):
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["model"]["version"] == "1.0.0" and data["horizon"]["validated"] is True
+    assert data["series"][0]["points"][0]["ai"] is not None
     point = data["series"][0]["points"][0]
     assert point["date"] == "2025-07-20" and point["ai"] > 0
     assert set(point["baselines"]) == {"naive_last_value", "seasonal_naive_7"}
@@ -56,12 +57,12 @@ def test_forecast_compare(client):
 
 def test_horizon_rules(client):
     as_of = dt.date(2025, 7, 19)
-    body = {"model": {"id": "own-ws_test"}, "asOfDate": str(as_of), "horizonDays": 7,
+    body = {"model": {"id": "own-ws_test"}, "asOfDate": str(as_of), "horizonDays": 14,
             "series": _series(synthetic_history(), as_of, {"P000"})}
     error = client.post("/internal/v1/forecast", json=body).json()["error"]
     assert error["code"] == "HORIZON_NOT_SUPPORTED"
     data = client.post("/internal/v1/forecast", json={**body, "allowExperimentalHorizon": True}).json()
-    assert data["horizon"]["validated"] is False and len(data["series"][0]["points"]) == 7
+    assert data["horizon"]["validated"] is False and len(data["series"][0]["points"]) == 14
 
 
 def test_leakage_and_errors(client):
@@ -127,8 +128,8 @@ def test_reference_forecast_matches_stored_backtest(monkeypatch):
                        "futurePrices": [{"date": str(target), "price": float(item_prices.get(week_of[target]))}]})
     data = client.post("/internal/v1/forecast", json={
         "model": {"id": "m5-ca1-foods"}, "asOfDate": str(as_of), "series": series}).json()
-    assert data["model"]["version"] == "1.0.0-bt"
-    stored = pd.read_parquet(REFERENCE_MODEL_DIR / "1.0.0-bt" / "backtest" / "predictions.parquet")
+    assert data["model"]["version"] == "1.1.0-bt"
+    stored = pd.read_parquet(REFERENCE_MODEL_DIR / "1.1.0-bt" / "backtest" / "predictions.parquet")
     stored = stored[stored["date"] == "2016-05-02"].set_index("product_id")["ai"]
     for s in data["series"]:
         assert s["points"][0]["ai"] == pytest.approx(stored[s["productId"]], abs=1e-3)
@@ -136,6 +137,6 @@ def test_reference_forecast_matches_stored_backtest(monkeypatch):
         "model": {"id": "m5-ca1-foods"}, "asOfDate": str(as_of),
         "series": [{**series[0], "productId": "WATER-500ML"}]}).json()
     assert unknown["series"][0]["aiUnavailableReason"] == "PRODUCT_NOT_IN_MODEL"
-    stored_bt = client.get("/internal/v1/models/m5-ca1-foods/1.0.0/backtest",
+    stored_bt = client.get("/internal/v1/models/m5-ca1-foods/1.1.0/backtest",
                            params={"productId": series[0]["productId"]}).json()
     assert stored_bt["product"]["n"] == 28

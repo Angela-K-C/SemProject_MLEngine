@@ -6,7 +6,7 @@
     "endDate": "2016-05-22"
   },
   "series": "all CA_1 FOODS items",
-  "modelVersion": "m5-ca1-foods@1.0.0-bt",
+  "modelVersion": "m5-ca1-foods@1.1.0-bt",
   "oneStepAhead": true,
   "ai": {
     "n": 40236,

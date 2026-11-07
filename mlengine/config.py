@@ -42,14 +42,14 @@ LGBM_PARAMS: dict = {
 }
 EARLY_STOPPING_ROUNDS = 30
 
-# --- Own-data workspaces (provisional; see notebooks/PortableFeatures_CA1Foods.ipynb) ------
+# --- Own-data workspaces (set from notebooks/PortableFeatures_CA1Foods.ipynb) --------------
 OWN_DATA_VALID_DAYS = 28
 OWN_DATA_BACKTEST_DAYS = 28
 OWN_DATA_ELIGIBILITY = {
     "minProducts": 10,
     "minHistoryDaysPerProduct": LOOKBACK_DAYS,
     "minStoreHistoryDays": 120,
-    "minObservedProductDays": 5000,
+    "minObservedProductDays": 4500,
 }
 
 

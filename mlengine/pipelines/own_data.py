@@ -123,6 +123,35 @@ def build_training_frame(wide: WideHistory, history_start: dt.date, country, sub
     return frame
 
 
+RECURSIVE_HORIZON = 7
+
+
+def _recursive_check(wide: WideHistory, booster, features, levels, backtest_start: int,
+                     country, subdivision) -> dict:
+    """Recursive 7-day backtest from every origin inside the backtest window (future prices unknown)."""
+    from mlengine.evaluation.backtest import recursive_backtest
+    from mlengine.models.artifact import ModelArtifact
+    from mlengine.models.forecaster import Forecaster, SeriesBatch
+
+    temporary = ModelArtifact(path=Path("."), metadata={
+        "modelId": "candidate", "version": "candidate", "featureSchema": portable_v1.SCHEMA_NAME,
+        "featureColumns": features, "categoricalLevels": levels,
+        "training": {"historyStartDate": str(wide.first_date), "endDate": str(wide.last_date),
+                     "country": country, "subdivision": subdivision},
+        "capabilities": {}}, _booster=booster)
+    last = wide.sales.shape[1] - 1
+
+    def build(origin: int):
+        batch = SeriesBatch(wide.series["product_id"].tolist(), wide.series["store_id"].tolist(),
+                            wide.first_date + dt.timedelta(days=origin), wide.sales[:, : origin + 1],
+                            wide.prices[:, : origin + 1], None, wide.series["category"].tolist(),
+                            wide.series["first_price_date"].tolist())
+        return batch, wide.sales[:, origin + 1 : origin + 1 + RECURSIVE_HORIZON]
+
+    origins = range(backtest_start - 1, last - RECURSIVE_HORIZON + 1)
+    return recursive_backtest(Forecaster(temporary), build, origins, RECURSIVE_HORIZON)
+
+
 def train_own_data(
     history: pd.DataFrame,
     workspace_id: str,
@@ -178,6 +207,11 @@ def train_own_data(
     if not gate_passed:
         result["status"] = "GATE_FAILED"
         return result
+
+    levels = {c: [str(v) for v in frame[c].cat.categories] for c in portable_v1.CATEGORICAL_COLUMNS}
+    recursive = _recursive_check(wide, refit.booster_, features, levels, backtest_start, country, subdivision)
+    horizons = [1, RECURSIVE_HORIZON] if recursive["validated"] else [1]
+    result.update(recursive=recursive, horizons=horizons)
     if not register:
         result["status"] = "GATE_PASSED"
         return result
@@ -186,7 +220,6 @@ def train_own_data(
     registry = ModelRegistry(registry_dir)
     model_id = model_id_for(workspace_id)
     version = f"{len(registry.list(model_id)) + 1}.0.0"
-    levels = {c: [str(v) for v in frame[c].cat.categories] for c in portable_v1.CATEGORICAL_COLUMNS}
     metadata = {
         "modelId": model_id, "version": version, "status": "active", "algorithm": "lightgbm",
         "featureSchema": portable_v1.SCHEMA_NAME, "featureColumns": features, "categoricalLevels": levels,
@@ -197,12 +230,12 @@ def train_own_data(
             "endDate": str(wide.last_date), "rows": int(len(frame)), "products": int(len(wide.series)),
         },
         "capabilities": {
-            "horizons": [1], "experimentalMaxHorizon": 28, "frequency": "DAILY",
+            "horizons": horizons, "experimentalMaxHorizon": 28, "frequency": "DAILY",
             "minHistoryDays": config.LOOKBACK_DAYS,
             "maxMissingDaysInLookback": config.MAX_MISSING_DAYS_IN_LOOKBACK,
             "predictionIntervals": False, "baselines": ["naive_last_value", "seasonal_naive_7"],
         },
-        "evaluation": {"backtest": backtest, "gate": result["gate"]},
+        "evaluation": {"backtest": backtest, "gate": result["gate"], "recursive": recursive},
     }
     card = {
         "title": "Demand model: LightGBM (Tweedie), trained on your sales",
@@ -210,7 +243,7 @@ def train_own_data(
         "trainedOn": {"data": "This workspace's uploaded daily sales", "products": int(len(wide.series)),
                       "startDate": str(wide.first_date), "endDate": str(wide.last_date)},
         "predicts": "Expected units sold per product per day.",
-        "horizonDays": [1],
+        "horizonDays": horizons,
         "inputsPlainLanguage": [
             "Sales over the last 1, 7, 14 and 21 days",
             "Average and variability of sales over the last 3, 7 and 14 days",
@@ -219,9 +252,17 @@ def train_own_data(
             "The product's price (the last known price is assumed for future days)",
         ],
         "backtest": backtest,
+        "horizonAccuracy": {
+            "description": f"Accuracy by days ahead for {RECURSIVE_HORIZON}-day forecasts made during the backtest window.",
+            "validated": recursive["validated"],
+            "byDay": [{"day": d["day"], "aiRmse": d["ai"]["rmse"], "aiMae": d["ai"]["mae"],
+                       "naiveRmse": d["naive_last_value"]["rmse"], "naiveMae": d["naive_last_value"]["mae"]}
+                      for d in recursive["byDay"]],
+        },
         "limitations": [
             "Trained only on this workspace's history; new products have less to learn from.",
-            "Validated for next-day forecasts only.",
+            "7-day forecasts are offered only if they beat both baselines on this workspace's backtest."
+            if recursive["validated"] else "Validated for next-day forecasts only.",
             "Gives a single expected value, with no uncertainty range.",
         ],
     }

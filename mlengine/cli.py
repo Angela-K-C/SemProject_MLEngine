@@ -13,7 +13,7 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command", required=True)
 
     release = sub.add_parser("release-m5", help="Train, backtest and register the Reference model versions")
-    release.add_argument("--version", default="1.0.0")
+    release.add_argument("--version", default="1.1.0")
     release.add_argument("--registry", type=Path, default=None)
     release.add_argument("--raw-dir", type=Path, default=None)
 

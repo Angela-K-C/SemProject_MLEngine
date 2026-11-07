@@ -17,7 +17,7 @@ Read this file first, then the spec, then [`SemProject_Backend/docs/api.md`](../
 | **Backend API** (what the app calls) | `../SemProject_Backend` ([GitHub](https://github.com/Karanei-Kimutai/SemProject_Backend)) | **Done**: auth, workspaces, stores, products, history, readiness, capabilities, model cards, forecast jobs, CSV imports, own-data training, team, password reset, research export. 56 tests; checked end to end in Docker |
 | Demo data | Seeded into the backend from `python -m mlengine export-reference` | Done |
 | Sample business data | `python -m mlengine export-samples` → `data/processed/samples/` | Done |
-| **Android app** | **New repository, e.g. `../SemProject_MobileApp`** (ask the project owner for the name or remote) | **Not started: your job** |
+| **Android app** | `VolatileDemandForecastingMobileApplication` (the project is already created; you work in it) | **Not started: your job** |
 
 ## 2. Architecture and non-negotiables
 
@@ -35,7 +35,18 @@ Android app ──HTTPS──▶ Backend API ──(private)──▶ ML service
 
 ## 3. Run the whole stack locally
 
-You need Docker, plus the three repositories side by side (`SemProject_MLEngine`, `SemProject_Backend`, your app).
+You need Docker, plus the three repositories side by side in one folder:
+
+```text
+<parent>/
+├── VolatileDemandForecastingMobileApplication/   ← you are here
+├── SemProject_MLEngine/        (branch model-implementation until it is merged)
+└── SemProject_Backend/
+```
+
+If you can't read `../SemProject_Backend` or `../SemProject_MLEngine`, ask the owner to start you with `claude --add-dir ../SemProject_MLEngine --add-dir ../SemProject_Backend`, or to run `/add-dir`.
+
+**On Windows**, use Docker Desktop. Run the commands below in Git Bash, which handles `$PWD` and `( … )`. In PowerShell, replace `$PWD/..` with `${PWD}/..`, and run the `cd` steps separately. `export-reference` and `export-samples` need a Python environment in the ML engine (`py -m venv .venv`, `.venv\Scripts\pip install -e .`). If the owner copied `data/processed/` across, skip the exports.
 
 ```bash
 cd ../SemProject_Backend

@@ -1,12 +1,13 @@
 # Retail Demand Forecasting Mobile — Design Specification
 
-**Document version:** 2.0
+**Document version:** 2.1 (model side implemented)
 **Date:** 7 November 2026
 **Platform:** Android
 **Working project name:** Retail Demand Forecasting Mobile
 **Primary implementation:** Kotlin + Jetpack Compose (Material 3)
 **Navigation constraint:** AndroidX Fragments
-**ML engine:** This repository (`SemProject_MLEngine`): Tweedie LightGBM, Stage 3 of the modelling journey in `README.md`
+**ML engine:** This repository (`SemProject_MLEngine`), package `mlengine/`: Tweedie LightGBM, Stage 3 of the modelling journey in `README.md`. Active model `m5-ca1-foods@1.1.0`.
+**Handoff for the app/backend build:** `MOBILE_APP_HANDOFF.md`
 **Audience:** Project owner, Android developer, backend/ML developers, and AI coding assistant (Claude)
 
 ---
@@ -29,6 +30,24 @@ Version 1.0 described a generic forecasting app. It did not match the model this
 
 Everything outside these areas (app shell, menus, design system, security, accessibility) carries over from v1.0 with small edits.
 
+### 0.1 Implementation status (v2.1)
+
+The whole model side of this document is built, tested and committed on the `model-implementation` branch:
+
+| Item | Status | Where |
+| --- | --- | --- |
+| `mlengine` package (features, training, inference, baselines, metrics, demand classes) | Done | `mlengine/` |
+| Notebook parity: features identical over all 2,759,040 rows; 70 trees; dev RMSE 2.356; backtest RMSE 2.377 | Verified | `scripts/make_parity_fixture.py`, `tests/` |
+| Reference model `m5-ca1-foods` versions `1.1.0-dev`, `1.1.0-bt`, `1.1.0` | Released | `models/m5-ca1-foods/` |
+| 7-day recursive horizon | **Validated and enabled** (§10.5) | `notebooks/RecursiveHorizon_CA1Foods.ipynb` |
+| `portable-v1` schema and own-data training with backtest gate | Done; thresholds set from simulation (§9.4.2) | `notebooks/PortableFeatures_CA1Foods.ipynb` |
+| Error by demand class | Done (§10.8) | `notebooks/ErrorByDemandClass_CA1Foods.ipynb` |
+| Internal ML service (FastAPI) | Done; reproduces the backtest end to end over HTTP | `mlengine/service/`, `Dockerfile` |
+| Reference workspace seed export | Done | `python -m mlengine export-reference` |
+| **Backend API (§12.1) and Android app** | **Not started** | Next phase. See `MOBILE_APP_HANDOFF.md` |
+
+Where this document and the code disagree, the code and `MOBILE_APP_HANDOFF.md` win. The sections below have been updated to match what was built.
+
 ---
 
 ## 1. Executive summary
@@ -40,7 +59,7 @@ A business user will be able to:
 1. Sign in and open a workspace: the built-in **Reference workspace** (M5 store CA_1), or their own business workspace.
 2. Maintain a product catalogue, or import products along with sales data.
 3. Upload historical daily sales data in CSV format, map the columns, review validation results, and merge the data into the store's sales history.
-4. Select a product and request a **next-day** demand forecast (and later a 7-day forecast). The forecast can come from the AI model, the traditional baseline, or both side by side.
+4. Select a product and request a **next-day** or **7-day** demand forecast. The forecast can come from the AI model, the traditional baseline, or both side by side.
 5. In the Reference workspace, "replay" a past date and compare the forecast with what actually sold.
 6. Review forecast results through a chart, summary cards, a date-by-date table, and clearly labelled backtest metrics.
 7. Review previous forecast runs and export results.
@@ -478,12 +497,12 @@ The backend computes readiness per store and per product. Thresholds come from m
 
 | Check | Rule for the current model | What the user sees if it fails |
 |---|---|---|
-| Minimum history per product | ≥ 22 consecutive days ending yesterday (lags reach back 21 days) | "This product needs at least 22 days of sales history." |
+| Minimum history per product | ≥ 21 days ending on the as-of date (the longest lag is 21 days) | "This product needs at least 21 days of sales history." |
 | Freshness | Latest observed day = yesterday (next-day horizon) | "Upload sales up to yesterday. The forecast would otherwise start from old data." |
 | Gaps | ≤ 3 missing days in the last 21 | "Too many unrecorded days recently." |
 | Own-data AI eligibility (per store) | See §9.4.2 | "AI forecasting becomes available once your store has enough history." |
 
-In the Reference workspace every product passes these checks for any as-of date from 2011-02-19 (`d_22`) onward.
+In the Reference workspace every product passes these checks for any as-of date from 2016-03-27 onward, the earliest date with a leakage-safe model (§9.3).
 
 ### 8.8 Forecast configuration
 
@@ -492,8 +511,8 @@ In the Reference workspace every product passes these checks for any as-of date 
 - **Product.** One product per run in the MVP. The backend can score many products in one call; the UI limit keeps results readable.
 - **As-of date.** The last day of sales history the forecast may use. Default: the latest day in history. The forecast starts the day after.
   - Business workspaces: read-only, always the latest history day.
-  - Reference workspace: editable. Any date from 2016-04-24 (`d_1913`) to 2016-05-21 (`d_1940`) is a **replay** (actuals are known, so real errors can be shown). The default 2016-05-22 is a **true forecast** of 2016-05-23 (`d_1942`) onward, with no actuals. Research users can choose any date from `d_22`.
-- **Horizon.** Options come from `capabilities.horizons`. Today that is **Next day (1)**. **Next 7 days** appears only once the recursive-horizon backtest has passed and the backend enables it (§10.5). Unsupported horizons are not shown, not just disabled.
+  - Reference workspace: editable. Any date from 2016-04-24 (`d_1913`) to 2016-05-21 (`d_1940`) is a **replay** (actuals are known, so real errors can be shown). The default 2016-05-22 is a **true forecast** of 2016-05-23 (`d_1942`) onward, with no actuals. Research users can choose any date from 2016-03-27 (`d_1885`), served by the `-dev` model.
+- **Horizon.** Options come from `capabilities.horizons`. For `m5-ca1-foods@1.1.0` that is **Next day (1)** and **Next 7 days (7)**. The 7-day option was enabled after the recursive backtest passed (§10.5). Own-data models get 7 only if their own recursive backtest passes. Unsupported horizons are not shown, not just disabled.
 - **Method.** AI model, Traditional baseline, or Compare (default Compare, because that is what the research needs).
 - **Model version.** Research users only. Everyone else gets the active version.
 
@@ -548,7 +567,7 @@ Settings: profile, workspace, selected store, timezone, currency, theme, notific
 
 `ModelInfoFragment` shows the **model card** returned by `GET /v1/models/active` for the current workspace:
 
-- Name and version, for example "Demand model: LightGBM (Tweedie) · `m5-ca1-foods` v1.0.0".
+- Name and version, for example "Demand model: LightGBM (Tweedie) · `m5-ca1-foods` v1.1.0".
 - What it was trained on: data, store, product range, date range.
 - What it predicts: expected units sold per product per day, next-day horizon.
 - Inputs in plain language: recent sales (last 1, 7, 14 and 21 days and short averages), day of week and month, holidays and events, price.
@@ -591,7 +610,7 @@ The trained Stage 3 model uses the M5 item, department, store and state IDs as c
 | Data | M5 CA_1 FOODS, seeded by the backend | The business's uploaded history |
 | Model | Pre-trained `m5-ca1-foods` artifact (Stage 3) | `own-data` profile: same algorithm and hyperparameters, **portable feature schema** (§10.3), **trained per workspace** |
 | AI forecasts available | Always | Only after training succeeds and the workspace backtest passes the gate (§9.4.3) |
-| Baselines available | Always | As soon as a product has 22 days of history |
+| Baselines available | Always | As soon as a product has 1 recorded day (naive) or 7 days (seasonal naive) |
 | Replay with actuals | Yes, `d_1913`–`d_1941` (and any date for research users) | Later, via scheduled evaluation (§11.6) |
 | Research validity | This is where the study's results come from | Exploratory. Each workspace reports its own backtest |
 | Release | **MVP** | **Phase 2** of the ML roadmap |
@@ -599,13 +618,14 @@ The trained Stage 3 model uses the M5 item, department, store and state IDs as c
 ### 9.3 Reference workspace flow (MVP)
 
 1. **Seeding (one-time).** A backend command (`seed_reference_workspace`) reads `sales_train_evaluation.csv`, `calendar.csv` and `sell_prices.csv` with the `mlengine` M5 loader, keeps CA_1 FOODS, converts the wide `d_*` columns to canonical daily rows (`d_1` = 2011-01-29), and writes products, sales history, prices and the M5 calendar into the database. The 1,437 × 1,941 ≈ 2.8 million rows fit comfortably in PostgreSQL.
-2. **Model artifacts.** Two versions are registered (§11.2):
-   - `m5-ca1-foods@1.0.0-bt`: trained on `d_22`–`d_1913` with the early-stopped iteration count. Used for any as-of date in `d_1913`–`d_1940`, so replayed forecasts never use a model that has seen the replay window.
-   - `m5-ca1-foods@1.0.0`: refit on `d_22`–`d_1941`. Used for the true forecast from `d_1941`.
+2. **Model artifacts.** Three versions are registered (§11.3), all with 70 trees:
+   - `m5-ca1-foods@1.1.0-dev`: trained on `d_22`–`d_1885` (the notebook's development model). Used for as-of dates 2016-03-27 to 2016-04-23.
+   - `m5-ca1-foods@1.1.0-bt`: trained on `d_22`–`d_1913`. Used for any as-of date in `d_1913`–`d_1940`, so replayed forecasts never use a model that has seen the replay window.
+   - `m5-ca1-foods@1.1.0`: refit on `d_22`–`d_1941`. Used for the true forecast from `d_1941` (2016-05-22).
    The ML service picks the newest version whose `training_end_date` is **on or before** the as-of date. If none qualifies, it refuses the request. This leakage rule is enforced in code, not left to convention.
-3. **Forecast request.** The backend loads the product's last 21+ days of history up to the as-of date, the calendar and price rows for the forecast days, and the product's first-price week. It sends these to `POST /internal/v1/forecast` (§12.3).
+3. **Forecast request.** The backend loads the product's last 365 days of history up to the as-of date (21 days are enough for the features; 365 make the demand class meaningful), the known prices for the forecast days, and the product's first-price date. It sends these to `POST /internal/v1/forecast` (§12.3). The ML service derives the M5 identity fields and the calendar itself; the backend sends neither.
 4. **Response.** The ML service returns AI and baseline predictions per day, the model version, the feature-schema version and the demand class. The backend stores the run and its points, adds actuals when replaying, and attaches the product's stored backtest metrics.
-5. **Stored backtests.** At release, the ML service runs the `@1.0.0-bt` model over `d_1914`–`d_1941` for all 1,437 items and stores per-product AI and baseline metrics. These feed §8.10 item 2 without recomputation.
+5. **Stored backtests.** The release stores the `@1.1.0-bt` model's per-product AI and baseline metrics over `d_1914`–`d_1941` in the artifact. The backend reads them with `GET /internal/v1/models/m5-ca1-foods/1.1.0/backtest?productId=…` for §8.10 item 2.
 
 ### 9.4 Own-data workspace flow (Phase 2)
 
@@ -613,13 +633,13 @@ The trained Stage 3 model uses the M5 item, department, store and state IDs as c
 
 What carries over from the research is the **recipe**: short lags, short rolling windows, a Tweedie objective, LightGBM and these hyperparameters. The M5 weights do not carry over. The notebooks showed that features and objective mattered far more than model choice, so the recipe is the valuable, transferable result. Each business gets the same recipe trained on its own history, and the model's categorical levels are that business's own products.
 
-#### 9.4.2 Eligibility to train (provisional; confirmed by the Phase 2 experiment)
+#### 9.4.2 Eligibility to train (set by `PortableFeatures_CA1Foods.ipynb`)
 
-- ≥ 10 active products with ≥ 22 days of history each.
+- ≥ 10 active products with ≥ 21 days of history each.
 - ≥ 120 days of store history (enough for a training window plus a 28-day validation window and a 28-day backtest).
-- ≥ 5,000 product-days of observed data in total.
+- ≥ 4,500 product-days of observed data in total.
 
-These thresholds are model metadata (`capabilities.ownData.eligibility`) and the Phase 2 notebook (§10.10) sets their final values. Until a store is eligible, only baselines are offered, and the dashboard shows progress toward eligibility, for example "64 of 120 days".
+These thresholds live in `mlengine.config.OWN_DATA_ELIGIBILITY`, and `POST /internal/v1/eligibility` returns each check with its value and requirement. In the simulation, every store with 4,500+ product-days and 120+ days passed the gate in at least 2 of 3 runs, and every one with 6,000+ passed in all 3. Until a store is eligible, only baselines are offered, and the dashboard shows progress toward eligibility, for example "64 of 120 days".
 
 #### 9.4.3 Training and the backtest gate
 
@@ -629,6 +649,7 @@ These thresholds are model metadata (`capabilities.ownData.eligibility`) and the
 4. **Gate:** the model is activated only if its backtest RMSE **and** MAE are both lower than the naive lag-1 baseline's on the same window. Otherwise the run is stored as "Not better than baseline". The workspace keeps baselines, and the model card says so honestly.
 5. If the gate passes, the ML service refits on all history, stores the artifact under `own-data/<workspaceId>@<n>`, and the backend marks it active.
 6. Weekly retrains follow the same gate. A new version that fails the gate does not replace a passing one.
+7. Training also runs a recursive 7-day backtest inside the backtest window. If it beats both baselines, the model is registered with horizons `[1, 7]`; otherwise `[1]`.
 
 ### 9.5 Forecast request lifecycle (both modes)
 
@@ -683,7 +704,7 @@ The portable schema keeps everything that transfers and replaces the M5-specific
 | `store_id`, `state_id` | `store_id` (categorical) | Multi-store workspaces |
 | `d_num`, `wm_yr_wk`, `year_num` | `days_since_history_start`, `year_num` | No M5 day numbering |
 | Lags, rolling, calendar | Unchanged | Same definitions |
-| `event_*` | `holiday_name`, `holiday_type` (categorical) | From the workspace country's public-holiday calendar (Python `holidays` package) |
+| `event_*` | `holiday_name` (categorical), `is_holiday` | From the workspace country's public-holiday calendar (Python `holidays` package) |
 | `snap` | *dropped* | US-specific |
 | `sell_price` (weekly) | `sell_price` (daily, last known price carried forward) | User data is daily |
 | `price_missing`, `weeks_since_first_price` | Unchanged in meaning (first price date from history) | Same |
@@ -692,13 +713,14 @@ The portable schema keeps everything that transfers and replaces the M5-specific
 
 ### 10.4 Inference: what the ML service needs per product
 
-For an as-of date *a* and horizon *H*:
+For an as-of date *a* and horizon *H*, the backend sends:
 
-- Observed daily units for *a−20 … a* (21 days, the longest lag). The backend sends at least 28 days so gap checks and display context are available.
-- The product's first-price date or week.
-- Calendar rows (events/holidays, SNAP for `m5-v1`) for *a+1 … a+H*.
-- Price for *a+1 … a+H* (`m5-v1`: from `sell_prices`; `portable-v1`: last known).
-- Identity and category values.
+- Daily units for *a−20 … a* at minimum (21 days, the longest lag). Sending 365 days is recommended so the demand class is meaningful. Unrecorded days are omitted or sent as `units: null`.
+- The daily price for the history days, and known prices for *a+1 … a+H* (`futurePrices`). Missing future prices fall back to the last known price (`priceAssumption: "LAST_KNOWN"`).
+- The product's first-price date (inferred from the history, with a warning, if absent).
+- The category (own-data models).
+
+The ML service supplies the rest itself: M5 identity fields, the M5 calendar and SNAP (`m5-v1`), or public holidays for the workspace country (`portable-v1`).
 
 ### 10.5 Horizons and recursive forecasting
 
@@ -706,9 +728,11 @@ The model is trained to predict day *t* from information up to *t−1*. The vali
 
 For *H* > 1, the ML service runs **recursively**: it predicts *a+1*, appends that prediction to the series as if it were observed, recomputes lags and rolling features, and predicts *a+2*, and so on. Errors compound, and the model never saw its own predictions as inputs during training. So:
 
-- `capabilities.horizons` starts as `[1]`.
-- A new notebook, `RecursiveHorizon_CA1Foods.ipynb` (built on the `mlengine` package), runs the recursive 7-day forecast from every as-of date in `d_1913`–`d_1934`. It reports RMSE/MAE/WAPE **per horizon day (1–7)** against a 7-day naive baseline (last observed value repeated) and a seasonal-naive baseline (same weekday last week).
-- 7 is added to `capabilities.horizons` only if the recursive AI forecast beats both baselines on aggregate 7-day RMSE and MAE. The per-day error curve is published on the model card.
+- `RecursiveHorizon_CA1Foods.ipynb` runs the recursive 7-day forecast from every as-of date in `d_1913`–`d_1934` (22 origins × 1,437 items) and scores each horizon day against naive and seasonal naive.
+- Rule: enable 7 only if the recursive AI forecast beats both baselines on aggregate 7-day RMSE and MAE.
+- **Result: passed.** Aggregate 7-day RMSE / MAE: AI 2.472 / 1.458, seasonal naive 3.176 / 1.760, naive 3.489 / 1.860. AI RMSE rises from 2.34 on day 1 to 2.58 on day 7 and beats both baselines on every day. From day 2 the forecasts run about 0.09 units/day (about 4%) high.
+- The release pipeline repeats this check itself (`mlengine.evaluation.backtest.recursive_backtest`). Since `m5-ca1-foods@1.1.0`, `capabilities.horizons` is `[1, 7]`, and the per-day curve is on the model card (`card.horizonAccuracy.byDay`).
+- Horizons 8–28 can be requested with `allowExperimentalHorizon: true` (research only). They come back with `horizon.validated: false`.
 - 14- and 28-day horizons would use a separately trained direct model with 28-day-embargoed lags (the Stage 2 design, which the README notes is right for month-ahead views). Deferred.
 
 Baselines use the same recursion rules: the naive forecast for every day in the horizon is the last observed value.
@@ -752,6 +776,8 @@ Classes (Syntetos–Boylan thresholds; to be confirmed in the research methodolo
 
 This classification is how the app supports the "under volatile demand conditions" part of the research question. The research export reports AI vs. baseline errors per class.
 
+**Result on the CA_1 FOODS backtest** (`ErrorByDemandClass_CA1Foods.ipynb`): AI beats naive in every class, with an RMSE gain of 29% (smooth, 221 items), 21% (erratic, 37), 25% (intermittent, 925) and 25% (lumpy, 249). The MAE gain is smaller for intermittent and lumpy items (17–19%), and on MAE naive still wins for about a quarter of those items.
+
 ### 10.9 Research integrity requirements
 
 - AI and baselines always use the same series, as-of date, horizon and preprocessing.
@@ -761,13 +787,15 @@ This classification is how the app supports the "under volatile demand condition
 - **Research export** (research users): CSV of all replay runs with per-day actuals, AI and baseline forecasts, demand class and metadata, so the study's tables can be reproduced from the app's own data.
 - Forecasts for future dates have no actuals at generation time. Their metrics are always labelled as historical backtests.
 
-### 10.10 Notebook experiments still needed
+### 10.10 Notebook experiments
 
-| Notebook | Purpose | Blocks |
+All three have been run. The outputs and conclusions are saved in the notebooks.
+
+| Notebook | Purpose | Result |
 |---|---|---|
-| `RecursiveHorizon_CA1Foods.ipynb` | Validate the 7-day recursive forecast (§10.5) | Enabling `H = 7` |
-| `PortableFeatures_CA1Foods.ipynb` | Train `portable-v1` on CA_1 FOODS with M5 IDs and SNAP removed and holidays replacing events. Compare with `m5-v1` on the same windows. Simulate smaller stores by sub-sampling products and history to set the §9.4.2 thresholds. | Phase 2 own-data mode |
-| `ErrorByDemandClass_CA1Foods.ipynb` | Break the Stage 3 backtest down by demand class for the research write-up and the model card | Model card content |
+| `RecursiveHorizon_CA1Foods.ipynb` | Validate the 7-day recursive forecast (§10.5) | Passed; horizon 7 enabled |
+| `PortableFeatures_CA1Foods.ipynb` | Compare `portable-v1` with `m5-v1`; simulate small stores | `portable-v1` backtest RMSE 2.380 vs 2.377 (within 0.2%). Thresholds set (§9.4.2) |
+| `ErrorByDemandClass_CA1Foods.ipynb` | Backtest error by demand class | AI beats naive in all classes (§10.8) |
 
 ---
 
@@ -777,111 +805,60 @@ This classification is how the app supports the "under volatile demand condition
 
 All the modelling code currently lives in notebooks. Each notebook repeats data loading and feature building. No model is saved, and `scripts/preprocess_m5.py` still builds the obsolete 28-day features. Serving needs one importable, tested implementation of the Stage 3 pipeline that reproduces the notebook's numbers.
 
-### 11.2 Target layout of this repository
+### 11.2 Repository layout (as built)
 
 ```text
 SemProject_MLEngine/
-├── notebooks/                    # Research record. Existing notebooks stay unchanged.
-├── mlengine/                     # New: installable package (pyproject.toml)
-│   ├── __init__.py               # __version__
-│   ├── config.py                 # LAG_DAYS, ROLLING_WINDOWS, FEATURE_START_DAY, hyperparameters, seed
-│   ├── data/
-│   │   ├── m5.py                 # Load raw M5 files; scope to store/category; wide → canonical daily
-│   │   └── canonical.py          # Canonical daily-sales schema and validation (shared with backend import)
-│   ├── features/
-│   │   ├── schemas.py            # FeatureSchema "m5-v1" and "portable-v1": ordered columns, dtypes, categoricals
-│   │   ├── build.py              # build_training_frame(...) and build_inference_rows(...): ONE implementation
-│   │   └── calendar.py           # M5 calendar features; country holiday calendar for portable-v1
-│   ├── models/
-│   │   ├── train.py              # fit with early stopping, refit, gate check
-│   │   ├── predict.py            # one-step and recursive prediction
-│   │   ├── baselines.py          # naive_last_value, seasonal_naive_7
-│   │   └── artifact.py           # save/load model + metadata; registry lookup with leakage rule
-│   ├── evaluation/
-│   │   ├── metrics.py            # mae, rmse, wape
-│   │   ├── backtest.py           # rolling-origin and fixed-window backtests
-│   │   └── demand_class.py       # ADI, CV², classes
-│   ├── cli.py                    # `python -m mlengine train|backtest|predict|card`
-│   └── service/
-│       ├── app.py                # FastAPI internal ML service
-│       └── schemas.py            # Pydantic request/response models (§12)
-├── tests/
-│   ├── test_features_parity.py   # Package features == notebook features on a fixed sample
-│   ├── test_training_parity.py   # Reproduces Stage 3 dev/backtest RMSE within tolerance
-│   ├── test_no_leakage.py        # Features for day t never read day ≥ t; registry rule
-│   ├── test_recursive.py         # H=1 recursive == one-step; H>1 uses its own predictions
-│   ├── test_baselines_metrics.py
-│   └── test_service_contract.py  # Request/response schema and error cases
-├── models/                       # Local registry (git-ignored; artifacts published as release assets)
-├── scripts/preprocess_m5.py      # Marked legacy (28-day features) or rewritten on top of mlengine
-└── requirements*.txt / pyproject.toml
+├── notebooks/                    # Research record. Stage 1–7 notebooks unchanged; 3 new ones import mlengine.
+├── mlengine/                     # Installable package (pyproject.toml); `python -m mlengine …`
+│   ├── config.py                 # Lags, windows, splits, hyperparameters, eligibility thresholds
+│   ├── data/m5.py                # Load and scope raw M5; daily price matrix; scope_to_batch()
+│   ├── features/core.py          # Lag/rolling maths, the single implementation (NaN-aware)
+│   ├── features/m5_v1.py         # The 31 Stage 3 features (identical to the notebook)
+│   ├── features/portable_v1.py   # Own-data features (holidays, daily prices)
+│   ├── models/train.py           # LightGBM calls exactly as in the notebook
+│   ├── models/forecaster.py      # One-step + recursive inference for both schemas
+│   ├── models/baselines.py       # naive_last_value, seasonal_naive_7
+│   ├── models/artifact.py        # Artifacts, ModelRegistry, leakage rule
+│   ├── evaluation/               # metrics.py, demand_class.py, backtest.py (recursive)
+│   ├── pipelines/m5_release.py   # Train/backtest/register the Reference versions
+│   ├── pipelines/own_data.py     # Per-workspace training + gate + recursive check
+│   ├── pipelines/reference_export.py  # Seed data for the backend
+│   ├── service/                  # FastAPI internal ML service (app.py, schemas.py)
+│   └── cli.py                    # release-m5 | export-reference | serve | models
+├── models/m5-ca1-foods/          # Committed artifacts (about 2.5 MB): 1.1.0-dev, 1.1.0-bt, 1.1.0
+├── tests/                        # 23 fast tests + 2 full-data tests (MLENGINE_FULL_TESTS=1)
+├── docs/ml-service-examples/     # Real request/response JSON from the running service
+├── scripts/make_parity_fixture.py  # Runs the notebook cells and checks feature identity
+├── scripts/preprocess_m5.py      # Legacy (28-day features); not used by mlengine
+└── Dockerfile                    # ML service image
 ```
 
-The notebooks stay as the research record and are not rewritten. The new notebooks in §10.10 import `mlengine` instead of copying code.
+### 11.3 Model artifacts and run metadata
 
-### 11.3 Model artifact and run metadata
+Each registered version is a folder `models/<modelId>/<version>/` with `model.txt` (LightGBM booster), `metadata.json`, `card.json`, `calendar.parquet` (M5 models), and `backtest/` (`summary.json`, `per_product.parquet`, plus `predictions.parquet` for `-bt`). `metadata.json` records the feature columns, categorical levels, hyperparameters (including the real tree count, 70), training window, capabilities, evaluation results, `mlengineVersion`, `lightgbmVersion` and `gitCommit`.
 
-Each registered model version is a folder:
+**Decision change:** the artifacts are small (about 2.5 MB in total), so they are **committed to Git** instead of published as release assets. That way the ML service runs from a fresh clone without the raw M5 files. Own-data models are written to the same registry at runtime and are not committed.
 
-```text
-models/m5-ca1-foods/1.0.0/
-├── model.txt          # LightGBM Booster.save_model(); includes pandas_categorical levels
-├── metadata.json      # see below
-├── card.json          # human-readable model card served to the app (§8.13)
-└── backtest/
-    ├── summary.json   # store-level AI vs. baseline metrics
-    └── per_product.parquet
-```
+Each **forecast run** stored by the backend records: `runId`, workspace/store/product, `asOfDate`, `horizonDays`, `method`, the resolved `model.id@version`, `featureSchema`, `mlengineVersion`, `historyVersion`, the baselines used, `priceAssumption`, `missingDaysInLookback`, `isReplay`, timestamps and the request ID. All of these except the backend's own fields come back in the ML service response.
 
-`metadata.json` (example):
+### 11.4 Parity: proving the package equals the notebook (done)
 
-```json
-{
-  "modelId": "m5-ca1-foods",
-  "version": "1.0.0",
-  "algorithm": "lightgbm",
-  "lightgbmVersion": "4.5.0",
-  "mlengineVersion": "0.1.0",
-  "featureSchema": "m5-v1",
-  "featureColumns": ["id", "item_id", "...", "weeks_since_first_price"],
-  "categoricalLevels": {"item_id": ["FOODS_1_001", "..."], "event_name_1": ["Christmas", "..."]},
-  "params": {"objective": "tweedie", "tweedie_variance_power": 1.1, "learning_rate": 0.05,
-             "num_leaves": 31, "n_estimators": 812, "random_state": 42},
-  "training": {"scope": {"store": "CA_1", "category": "FOODS"}, "startDay": 22, "endDay": 1941,
-               "startDate": "2011-02-19", "endDate": "2016-05-22", "rows": 2758743,
-               "sourceFiles": {"sales_train_evaluation.csv": "sha256:…"}},
-  "capabilities": {"horizons": [1], "frequency": "DAILY", "minHistoryDays": 22,
-                   "maxMissingDaysInLookback": 3, "predictionIntervals": false},
-  "createdAt": "2026-11-…",
-  "gitCommit": "…"
-}
-```
-
-(`n_estimators` and `rows` above are placeholders; the real values are written by the training run.)
-
-Each **forecast run** stored by the backend records: `runId`, workspace/store/product, `asOfDate`, `horizonDays`, `method`, `modelId@version`, `featureSchema`, `mlengineVersion`, `historyVersion` (a monotonic counter bumped on every confirmed import or deletion), `baselineIds`, `priceAssumption`, `missingDaysInLookback`, `isReplay`, timestamps and the ML service request ID.
-
-### 11.4 Parity: proving the package equals the notebook
-
-Before any model is served:
-
-1. **Feature parity.** For 50 fixed CA_1 FOODS items and days `d_1886`–`d_1913`, every feature from `mlengine.features.build` equals the notebook's `featureFrame` (exact for integers and categoricals, within 1e-5 for floats). The notebook frame is exported once to a small fixture file.
-2. **Training parity.** `python -m mlengine train --profile m5-ca1-foods --train-end 1885 --valid 1886-1913` reproduces dev RMSE 2.356 and MAE 1.308 within ±0.005. The refit-and-backtest reproduces 2.377 and 1.377 within ±0.005. (Small drift can come from thread nondeterminism, so tests set `deterministic=True` and fixed `num_threads`.)
-3. **Inference parity.** `build_inference_rows` for a single item on day *t* produces the same row as the training frame for that item and day. This is the test that catches train/serve skew.
-4. **No-leakage test.** Altering any sales value on or after day *t* must not change any feature for day *t*.
-
-These tests run in CI on a small committed fixture (a few dozen items). The full-data parity check runs locally before each release, because the raw M5 files are not in Git.
+1. **Feature parity:** `scripts/make_parity_fixture.py` executes the notebook's own cells and compares every column of its `featureFrame` with `mlengine`'s. **Identical over all 2,759,040 rows and 33 columns.** A 25-item fixture (`tests/fixtures/m5_parity/`) repeats the check in CI.
+2. **Training parity:** 70 early-stopped trees; dev RMSE 2.3555 / MAE 1.3085; backtest RMSE 2.3773 / MAE 1.3766; naive 3.194 and 3.219. These match the notebook (`tests/test_full_data.py`).
+3. **Inference parity:** the serving path (history arranged as the backend sends it) reproduces the training-frame predictions to within 4e-6, with 21, 28 or 365 days of history (`tests/test_service.py`).
+4. **End to end:** `POST /internal/v1/backtest` over 2016-04-25 to 2016-05-22 for all 1,437 items returns RMSE 2.377.
+5. **No leakage:** changing any sales value on or after day *t* leaves day *t*'s features unchanged (`tests/test_features_core.py`). The registry refuses models trained past the as-of date (`tests/test_registry.py`).
 
 ### 11.5 Release workflow for a model version
 
-1. `python -m mlengine train --profile m5-ca1-foods --train-end 1913` → `@1.0.0-bt` (replay model).
-2. `python -m mlengine backtest --model m5-ca1-foods@1.0.0-bt --window 1914-1941` → per-product and store-level metrics.
-3. `python -m mlengine train --profile m5-ca1-foods --train-end 1941` → `@1.0.0` (forecast model).
-4. `python -m mlengine card --model m5-ca1-foods@1.0.0` → `card.json`.
-5. Run the full parity suite. Tag the commit `model-m5-ca1-foods-1.0.0`, and upload the artifact folders as release assets.
-6. Deploy: the ML service loads artifacts from a configured `MODEL_REGISTRY_PATH` at startup and logs the versions it loaded. The backend refreshes `GET /internal/v1/models`.
+```bash
+python -m mlengine release-m5 --version 1.1.0   # dev → bt → per-product backtest → recursive 7-day check → prod (~2 min)
+python -m mlengine models                       # list registered versions
+MLENGINE_FULL_TESTS=1 pytest                    # fast suite + full-data parity
+```
 
-Version numbers: **major** for a feature-schema change, **minor** for retraining on new data or changing hyperparameters, **patch** for metadata or card fixes. A `-bt` suffix marks replay models.
+Version numbers: **major** for a feature-schema change, **minor** for retraining or a capability change (1.0.0 → 1.1.0 added horizon 7), **patch** for metadata or card fixes. `-dev` and `-bt` mark the replay models.
 
 ### 11.6 Scheduled jobs (backend)
 
@@ -906,8 +883,8 @@ Version numbers: **major** for a feature-schema change, **minor** for retraining
 All paths are proposed contracts for the backend and ML service developers. Errors use one shape everywhere:
 
 ```json
-{"error": {"code": "INSUFFICIENT_HISTORY", "message": "This product needs at least 22 days of sales history.",
-           "details": {"availableDays": 12, "requiredDays": 22}, "requestId": "req_…"}}
+{"error": {"code": "INSUFFICIENT_HISTORY", "message": "This product needs at least 21 days of sales history.",
+           "details": {"availableDays": 12, "requiredDays": 21}, "requestId": "req_…"}}
 ```
 
 The app maps `code` to its own localised message and falls back to `message`.
@@ -946,14 +923,14 @@ The app maps `code` to its own localised message and falls back to `message`.
   "isReference": true,
   "aiAvailable": true,
   "methods": ["AI", "BASELINE", "COMPARE"],
-  "horizons": [1],
+  "horizons": [1, 7],
   "frequency": "DAILY",
   "asOf": {"default": "2016-05-22", "editable": true, "replayMin": "2016-04-24", "replayMax": "2016-05-21",
-           "researchMin": "2011-02-19"},
-  "minHistoryDays": 22,
+           "researchMin": "2016-03-27", "calendarEnd": "2016-06-19"},
+  "minHistoryDays": 21,
   "maxMissingDaysInLookback": 3,
   "predictionIntervals": false,
-  "activeModel": {"id": "m5-ca1-foods", "version": "1.0.0"}
+  "activeModel": {"id": "m5-ca1-foods", "version": "1.1.0"}
 }
 ```
 
@@ -977,7 +954,7 @@ The app maps `code` to its own localised message and falls back to `message`.
   "asOfDate": "2016-05-15",
   "isReplay": true,
   "horizon": {"startDate": "2016-05-16", "endDate": "2016-05-16", "days": 1, "frequency": "DAILY"},
-  "model": {"id": "m5-ca1-foods", "version": "1.0.0-bt", "featureSchema": "m5-v1"},
+  "model": {"id": "m5-ca1-foods", "version": "1.1.0-bt", "featureSchema": "m5-v1"},
   "baselines": [{"id": "naive_last_value", "label": "Same as last day"}],
   "priceAssumption": "KNOWN",
   "points": [{"date": "2016-05-16", "ai": 41.37, "baseline": 36.0, "actual": 44.0}],
@@ -985,7 +962,7 @@ The app maps `code` to its own localised message and falls back to `message`.
   "predictionIntervals": null,
   "runMetrics": {"window": "2016-05-16/2016-05-16", "n": 1,
                  "ai": {"mae": 2.63}, "baseline": {"mae": 8.0}},
-  "productBacktest": {"window": "2016-04-25/2016-05-22", "n": 28, "modelVersion": "1.0.0-bt",
+  "productBacktest": {"window": "2016-04-25/2016-05-22", "n": 28, "modelVersion": "1.1.0-bt",
                       "ai": {"mae": 5.1, "rmse": 6.8, "wape": 0.12},
                       "baseline": {"mae": 7.4, "rmse": 9.9, "wape": 0.18}},
   "historyVersion": 1,
@@ -995,51 +972,56 @@ The app maps `code` to its own localised message and falls back to `message`.
 
 The UI never hardcodes this sample as real data.
 
-### 12.2 Readiness error codes
+### 12.2 Error codes
 
-`INSUFFICIENT_HISTORY`, `STALE_HISTORY`, `TOO_MANY_GAPS`, `AI_NOT_AVAILABLE` (own-data store not trained or gate failed), `HORIZON_NOT_SUPPORTED`, `AS_OF_OUT_OF_RANGE`, `NO_MODEL_FOR_AS_OF` (leakage rule), `PRODUCT_NOT_IN_MODEL` (Reference model asked for a non-M5 product), `FORBIDDEN`.
+**Backend → app** (request-level, `422` unless noted): `INSUFFICIENT_HISTORY`, `STALE_HISTORY`, `TOO_MANY_GAPS`, `AI_NOT_AVAILABLE`, `HORIZON_NOT_SUPPORTED`, `AS_OF_OUT_OF_RANGE`, `NO_MODEL_FOR_AS_OF`, `PRODUCT_NOT_IN_MODEL`, `FORBIDDEN` (`403`).
 
-### 12.3 Internal ML service: forecast
+**ML service → backend:**
+- Request-level errors (`{"error": {...}}`): `INVALID_REQUEST`, `MODEL_REQUIRED`, `MODEL_NOT_FOUND` (`404`), `NO_MODEL_FOR_AS_OF`, `HORIZON_NOT_SUPPORTED`, `HISTORY_AFTER_AS_OF`, `DATE_OUTSIDE_CALENDAR`, `INVALID_WINDOW`, `INVALID_HISTORY`, `NO_STORED_BACKTEST` (`404`), `JOB_NOT_FOUND` (`404`), `UNAUTHORIZED` (`401`).
+- Per-series reasons (`series[i].aiUnavailableReason`, with baselines still returned): `INSUFFICIENT_HISTORY`, `TOO_MANY_GAPS`, `PRODUCT_NOT_IN_MODEL`, `AI_NOT_REQUESTED`.
 
-`POST /internal/v1/forecast`
+### 12.3 Internal ML service: forecast (as built)
+
+`POST /internal/v1/forecast`. Full real examples are in `docs/ml-service-examples/`.
 
 ```json
 {
-  "requestId": "req_…",
-  "modelRef": {"id": "m5-ca1-foods", "version": "1.0.0-bt"},
-  "asOfDate": "2016-05-15",
-  "horizonDays": 1,
-  "baselines": ["naive_last_value"],
+  "requestId": "req_123",
+  "model": {"id": "m5-ca1-foods"},
+  "asOfDate": "2016-05-22",
+  "horizonDays": 7,
+  "baselines": ["naive_last_value", "seasonal_naive_7"],
   "series": [{
-    "seriesKey": {"storeId": "CA_1", "productId": "FOODS_3_090"},
-    "attributes": {"id": "FOODS_3_090_CA_1_evaluation", "item_id": "FOODS_3_090", "dept_id": "FOODS_3",
-                   "cat_id": "FOODS", "store_id": "CA_1", "state_id": "CA"},
-    "firstPriceDate": "2011-01-29",
-    "history": [{"date": "2016-04-17", "units": 39, "observed": true}],
-    "future": [{"date": "2016-05-16", "price": 1.25,
-                "calendar": {"wm_yr_wk": 11616, "event_name_1": null, "event_type_1": null,
-                             "event_name_2": null, "event_type_2": null, "snap": 0}}]
+    "productId": "FOODS_3_090", "storeId": "CA_1", "category": "FOODS_3", "firstPriceDate": "2011-01-29",
+    "history": [{"date": "2016-05-22", "units": 64, "price": 1.25}],
+    "futurePrices": [{"date": "2016-05-23", "price": 1.25}]
   }]
 }
 ```
 
-The response returns, per series, `points[{date, ai, baselines{...}}]`, `demandClass`, `missingDaysInLookback`, `priceAssumption`, and the resolved model and feature-schema versions. The service rejects requests whose `attributes` contain categorical levels the model has never seen (`PRODUCT_NOT_IN_MODEL`), whose history is too short, or whose model version ended training after `asOfDate`.
+- `model.version` is optional. Without it, the registry picks the newest version trained only on data up to `asOfDate`.
+- `includeAi: false` (with `model` omitted) returns baselines and demand class only. Use it for own-data stores without an active model.
+- `history` must not contain dates after `asOfDate`. Missing days, or `units: null`, mean "not recorded". Send up to 365 days; at most 400 are used.
+- For M5 products the service derives `id`, `dept_id`, `cat_id` and `state_id` from `productId`/`storeId`, and the calendar (events, SNAP, Walmart weeks) from the artifact. The backend sends neither.
+- Response per series: `points[{date, ai, baselines{…}}]`, `aiUnavailableReason`, `missingDaysInLookback`, `priceAssumption` (`KNOWN` / `LAST_KNOWN` / `NONE` / `NOT_USED`), `demandClass{class, label, adi, cv2, zeroShare, observedDays, saleDays}`, and `warnings` (`FIRST_PRICE_DATE_INFERRED`, `PRODUCT_NEW_SINCE_TRAINING`). The top level carries `model{id, version, featureSchema, trainingEndDate}`, `horizon{startDate, endDate, days, validated}`, `mlengineVersion` and `baselineLabels`.
 
-The `id` attribute must use the exact suffix used during training (`_evaluation` or `_validation`). The M5 loader normalises this once, and the parity test checks it.
-
-### 12.4 Internal ML service: other endpoints
+### 12.4 Internal ML service: other endpoints (as built)
 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/internal/v1/health` | Liveness, plus the model versions loaded |
-| GET | `/internal/v1/models` | All registered versions with metadata and capabilities |
-| GET | `/internal/v1/models/{id}/{version}/card` | Model card |
-| POST | `/internal/v1/backtest` | Backtest a model and baselines over a window for given series |
-| POST | `/internal/v1/demand-class` | Compute ADI, CV² and class for series |
-| POST | `/internal/v1/train` | Phase 2: train an own-data model; async, returns a training job ID |
-| GET | `/internal/v1/train/{jobId}` | Training status, gate result, new version |
+| GET | `/internal/v1/models` | All versions with capabilities |
+| GET | `/internal/v1/models/{id}/resolve?asOfDate=` | Which version the leakage rule picks |
+| GET | `/internal/v1/models/{id}/{version}` | Metadata + card |
+| GET | `/internal/v1/models/{id}/{version}/card` | Model card only (for §8.13) |
+| GET | `/internal/v1/models/{id}/{version}/backtest[?productId=]` | Stored store-level and per-product backtest |
+| POST | `/internal/v1/backtest` | One-step backtest over a window (≤ 91 days) for given series |
+| POST | `/internal/v1/demand-class` | ADI, CV², class for series |
+| POST | `/internal/v1/eligibility` | Own-data eligibility checks for a history |
+| POST | `/internal/v1/train` | Own-data training job → `202 {jobId, statusUrl}` |
+| GET | `/internal/v1/train/{jobId}` | `QUEUED` / `RUNNING` / `COMPLETED` (result `status`: `TRAINED` / `GATE_FAILED` / `NOT_ELIGIBLE`) / `FAILED` |
 
----
+Authentication: when `ML_SERVICE_TOKEN` is set, every call needs `X-Internal-Token`. Training jobs are kept in memory; the resulting models persist in the registry.
 
 ## 13. Local persistence, uploads and offline behaviour
 
@@ -1088,7 +1070,7 @@ Every network screen defines loading, content, empty, error-with-retry and parti
 
 Example messages:
 - "We couldn't read the date column. Check the column mapping and date format."
-- "This product has only 12 days of sales history. Forecasts need at least 22."
+- "This product has only 12 days of sales history. Forecasts need at least 21."
 - "Your latest sales are from 3 Nov. Upload sales up to yesterday to forecast tomorrow."
 - "AI forecasts aren't available for this store yet. 'Same as last day' forecasts are available now."
 - "The AI model didn't beat the simple baseline on your recent data, so we're showing the baseline. We'll retry after more sales are uploaded."
@@ -1131,7 +1113,7 @@ Avoid "Something went wrong" when the backend returns an actionable code.
 **ML engine (this repo):**
 1. `mlengine` package with the M5 loader, the `m5-v1` features, training, one-step prediction, baselines, metrics and demand class.
 2. Parity tests passing (§11.4).
-3. Artifacts `m5-ca1-foods@1.0.0-bt` and `@1.0.0`, per-product backtests, and the model card.
+3. Artifacts `m5-ca1-foods@1.1.0-dev`, `@1.1.0-bt` and `@1.1.0`, per-product backtests, and the model card.
 4. Internal ML service: `health`, `models`, `forecast`, `backtest`, `demand-class`.
 
 **Backend:**
@@ -1150,7 +1132,7 @@ Avoid "Something went wrong" when the backend returns an actionable code.
 
 ### 18.2 Phase 2
 
-- 7-day recursive horizon, once `RecursiveHorizon_CA1Foods` passes (§10.5).
+- ~~7-day recursive horizon~~: validated and moved into the MVP (§10.5).
 - Own-data AI: `portable-v1`, per-workspace training, backtest gate, weekly retrain (§9.4).
 - Actuals evaluation job and "Actuals now available".
 - Research export.
@@ -1177,10 +1159,10 @@ The MVP is ready to demonstrate when:
 3. Screen UI is Kotlin + Jetpack Compose, with no XML screen layouts. Major destinations are Fragments hosting `ComposeView`s.
 4. Options, context and popup menus are each implemented with their correct triggers.
 5. In the Reference workspace, a user can generate a next-day forecast for any of the 1,437 products, with AI and baseline side by side.
-6. A replay forecast for an as-of date in 2016-04-24 to 2016-05-21 shows forecast vs. actual. It used the `-bt` model (visible in run details), and the ML service refuses a model trained past the as-of date.
-7. The `mlengine` parity tests pass, and the served model reproduces the Stage 3 backtest (RMSE 2.377 ± 0.005 over `d_1914`–`d_1941`) when re-run through the ML service's backtest endpoint.
+6. A replay forecast for an as-of date in 2016-04-24 to 2016-05-21 shows forecast vs. actual. It used the `1.1.0-bt` model (visible in run details), and the ML service refuses a model trained past the as-of date.
+7. ✅ Done: the `mlengine` parity tests pass, and the served model reproduces the Stage 3 backtest (RMSE 2.377 over `d_1914`–`d_1941`) through the ML service's backtest endpoint.
 8. A user can upload a CSV to their own workspace, map columns (including the zero-vs-missing question), see validation, confirm, and see updated readiness.
-9. Own-data products with ≥ 22 days of fresh history get baseline forecasts. AI is clearly shown as not yet available, with the reason.
+9. Own-data products with fresh history get baseline forecasts. AI is clearly shown as not yet available, with the reason.
 10. Forecast jobs show honest asynchronous states, and completed results reopen from history, including offline from cache.
 11. Every number on a result screen comes from the backend. Metrics always state their window, the series covered and the model version, and only appear where actuals exist.
 12. The model info screen shows the model card with training data, horizon, backtest results and limitations.
@@ -1192,13 +1174,13 @@ The MVP is ready to demonstrate when:
 
 Build incrementally and keep everything runnable after each phase. Report files changed, test results, known gaps and the next step at the end of each phase.
 
-**Phase A: ML engine package (this repo)**
+**Phase A: ML engine package (this repo) ✅ done**
 - Create `mlengine/` and `pyproject.toml`. Port the loader, the `m5-v1` feature builder, training, baselines and metrics from `LightGBM_BaseLocal.ipynb`, without changing their behaviour.
 - Export a small parity fixture from the notebook. Write the tests in §11.4 and make them pass.
-- Add `artifact.py` and the CLI. Produce `@1.0.0-bt`, the backtest and `@1.0.0`.
+- Add `artifact.py` and the CLI. Produce `@1.1.0-dev`, `@1.1.0-bt`, the backtests and `@1.1.0`.
 - Mark `scripts/preprocess_m5.py` as legacy in the README.
 
-**Phase B: ML service**
+**Phase B: ML service ✅ done**
 - FastAPI app with the §12.3–12.4 MVP endpoints, Pydantic schemas, the leakage rule, and contract tests.
 - A Dockerfile and a `MODEL_REGISTRY_PATH` setting.
 
@@ -1218,8 +1200,8 @@ Build incrementally and keep everything runnable after each phase. Report files 
 - During development, use fake repositories that return clearly labelled sample data, kept separate from production code.
 
 **Phase F: Phase 2 ML features**
-- `RecursiveHorizon_CA1Foods` → enable `H = 7` if it passes.
-- `PortableFeatures_CA1Foods` → `portable-v1`, own-data training, the gate, and the training UI.
+- ✅ `RecursiveHorizon_CA1Foods` → `H = 7` enabled.
+- ✅ `PortableFeatures_CA1Foods` → `portable-v1`, own-data training and the gate (ML side done). Remaining: backend wiring and the training UI.
 
 **Phase G: Quality and release**
 - Tests, an accessibility pass, offline handling, permission checks, icon and splash polish.
@@ -1236,7 +1218,7 @@ Treat this document as the source of truth for scope and architecture.
 - Implement the Options menu, the long-press Context menu and the tap-triggered Popup menu.
 - **Never put forecasting logic in the app.** No lags, baselines, metrics or demand classes are computed on the device.
 - **Never apply the M5-trained model to non-M5 products.** Own-data AI goes only through per-workspace training and the backtest gate.
-- **Offer only the horizons listed in `capabilities`.** Do not add 7/14/30-day options that the backend has not enabled.
+- **Offer only the horizons listed in `capabilities`** (today 1 and 7). Do not add 14/30-day options that the backend has not enabled.
 - **Port the notebook logic into `mlengine` without changing behaviour,** and prove it with the parity tests before serving.
 - **Enforce the leakage rule** (model training end ≤ as-of date) in the ML service.
 - Do not fabricate sales, forecasts, model details or accuracy. Label development fixtures clearly.
@@ -1245,19 +1227,19 @@ Treat this document as the source of truth for scope and architecture.
 
 ---
 
-## 22. Open decisions for the project owner
+## 22. Decisions
 
-These need a decision before or during the phase named. Each has a recommendation.
+| # | Decision | Outcome |
+|---|---|---|
+| 1 | AI in the Reference workspace only for the MVP, own-data AI in Phase 2? | Adopted. The own-data ML side is also built (training, gate, service endpoints), so the backend can wire it up whenever it is ready. |
+| 2 | Next-day-only horizon for the MVP? | Superseded: the 7-day recursive horizon was validated and is enabled. |
+| 3 | Separate backend and ML service processes? | The ML service is built as its own FastAPI app (`mlengine/service`). The backend calls it over HTTP on a private network with `X-Internal-Token`. It can also be mounted inside a Python backend process if preferred. |
+| 4 | Stage 3 or Stage 7 for production? | Stage 3 (31 features). |
+| 5 | Syntetos–Boylan thresholds? | Adopted (ADI 1.32, CV² 0.49). Cite them in the research write-up. |
+| 6 | Commit model artifacts? | **Changed:** committed to Git (about 2.5 MB). Own-data models are not committed. |
+| 7 | Own-data eligibility thresholds? | Set from the simulation: 10 products, 120 days, 4,500 product-days (§9.4.2). |
 
-| # | Decision | Recommendation | Needed by |
-|---|---|---|---|
-| 1 | Is the Reference-workspace-only AI acceptable for the MVP demo, with own-data AI in Phase 2? | Yes. It is the only place the model's accuracy is validated. | Phase C |
-| 2 | Is a next-day-only horizon acceptable for the MVP? | Yes. It is what the model was built and measured for. Add 7-day once validated. | Phase E |
-| 3 | Separate backend and ML service processes, or one FastAPI deployment? | One deployment with a strict internal module boundary for the semester; split later if needed. | Phase B |
-| 4 | Stage 3 (31 features) or Stage 7 (47) for production? | Stage 3. Stage 7's gain is within noise. | Phase A |
-| 5 | Syntetos–Boylan thresholds for demand classes? | Use them, citing the method in the research write-up. | Phase A |
-| 6 | Commit model artifacts to Git or publish them as release assets? | Release assets; keep `models/` git-ignored. | Phase A |
-| 7 | Own-data eligibility thresholds (§9.4.2)? | Treat the stated values as provisional until `PortableFeatures_CA1Foods` sets them. | Phase F |
+Still open for the project owner: which backend stack to use (§20 Phase C, see `MOBILE_APP_HANDOFF.md`), and where to host it.
 
 ---
 

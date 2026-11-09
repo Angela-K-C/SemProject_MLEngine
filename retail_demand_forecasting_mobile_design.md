@@ -10,6 +10,14 @@
 **Handoff for the Android app build:** `MOBILE_APP_HANDOFF.md`
 **Audience:** Project owner, Android developer, backend/ML developers, and AI coding assistant (Claude)
 
+> **Implementation status (9 November 2026).** Everything in this spec was built: the model side here, the backend in `SemProject_Backend`, and the app in `VolatileDemandForecastingMobileApplication`, whose `research` branch follows this spec. The app's `main` was then reworked for retail business owners, so it differs from this spec on purpose:
+> - the demo workspace is presented as the **sample shop**, offered from a welcome screen and Your shops;
+> - the Forecasts tab forecasts **every product at once** (backend store-wide batches, `POST /v1/stores/{sid}/forecast-batches`), and results lead with one number: the AI only when the shop's model beat the simple forecast, otherwise the simple forecast; the full comparison is under "How accurate is this?";
+> - replays, the as-of date and method choice, model-version choice, and the research summary and export are only on `research`;
+> - it adds an intro tour, a getting-started checklist, "?" explanations and a built-in sample sales file.
+>
+> Where this spec and `SemProject_Backend/docs/api.md` differ, api.md is right about the API. The app's `docs/FEATURES.md` describes what was built.
+
 ---
 
 ## 0. What changed from version 1.0

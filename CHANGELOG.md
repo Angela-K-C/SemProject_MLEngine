@@ -2,6 +2,19 @@
 
 Model versions (`models/`), the `mlengine` package and the documents. Dates are 2026.
 
+## 2026-11-09: Documentation refresh and a line-ending fix
+
+- **Fix: `.gitattributes`** marks `models/**` and `tests/fixtures/**` as binary. Git for Windows (`core.autocrlf=true`) had been checking the committed LightGBM `model.txt` files out with CRLF line endings. LightGBM can't parse those, so the process died loading a model: the tests stopped silently in `test_service.py`, and an `ml` image built from such a checkout couldn't serve. Found while re-running the tests for this refresh. Existing checkouts: delete the `model.txt` files under `models/` and `git checkout -- models`.
+- Docs checked against the code: operations runbook (test timings, troubleshooting), README troubleshooting, the handoff's status, and a status note on the design spec (the app was built, then reworked for business owners).
+
+## 2026-11-09: Simple forecast documented
+
+- `docs/notebook-to-production.md` defines the simple forecast (`naive_last_value`) exactly: the units from the last recorded day up to the as-of date, repeated for every forecast day; unrecorded days skipped, a recorded 0 carried; no minimum history beyond one recorded day in the window (`MAX_HISTORY_DAYS` = 400; the backend sends 365); backtests and the gate use `sales_lag_1`. Documentation only.
+
+## 2026-11-09: Online Retail experiment
+
+- `notebooks/PortableFeatures_OnlineRetail.ipynb` tests the own-data recipe on a shop unlike Walmart (UCI Online Retail II: UK gifts and homeware, mostly lumpy demand). RMSE 26% lower than the simple forecast on the whole shop; 20-product shops passed the gate in 36 of 40 runs, even with 90 days; absolute accuracy is low for lumpy items (WAPE 94%). Needs the dataset in `data/raw/online_retail_ii/` and `openpyxl`. No package changes.
+
 ## 2026-11-07: Sample business data
 
 - `python -m mlengine export-samples` writes three sample shop CSVs cut from a real M5 store that the Reference model never saw (TX_1 FOODS):

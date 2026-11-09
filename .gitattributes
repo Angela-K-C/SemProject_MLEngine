@@ -1,0 +1,5 @@
+# Model artifacts and test fixtures must stay byte-for-byte as committed. With Git for Windows' default
+# core.autocrlf=true, LightGBM model.txt files were checked out with CRLF line endings, which
+# LightGBM cannot parse (the service crashed loading them, on Windows and in the Docker image).
+models/** -text
+tests/fixtures/** -text

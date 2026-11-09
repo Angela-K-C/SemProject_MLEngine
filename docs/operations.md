@@ -7,7 +7,7 @@ How to set up, test, release, run and troubleshoot the model side.
 ```bash
 python3 -m venv .venv && source .venv/bin/activate     # Windows: .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt                       # or: pip install -e ".[service,dev]"
-pytest                                                # 23 tests in about 10 s; no raw data needed
+pytest                                                # 23 tests in about 15 s (3 full-data tests skipped); no raw data needed
 ```
 
 The raw M5 CSVs (see the README) are needed only to retrain, regenerate the parity fixture, export the Reference seed data, or run the full-data tests. **Serving needs only the committed `models/` folder.**
@@ -16,7 +16,7 @@ The raw M5 CSVs (see the README) are needed only to retrain, regenerate the pari
 
 | Task | Command | Time / memory |
 | --- | --- | --- |
-| Fast tests | `pytest` | ~10 s |
+| Fast tests | `pytest` | ~15 s |
 | Full-data parity tests | `MLENGINE_FULL_TESTS=1 pytest` | ~2 min, ~2.3 GB |
 | List model versions | `python -m mlengine models` | instant |
 | Run the ML service | `ML_SERVICE_TOKEN=… python -m mlengine serve --host 127.0.0.1 --port 8100` | loads models on first use |
@@ -48,6 +48,7 @@ docker run -d --name mlengine -p 127.0.0.1:8100:8100 \
 - Bind it to a private interface or an internal network only. The backend is its only client.
 - If own-data training is enabled, `MODEL_REGISTRY_PATH` must point at persistent storage, or trained models disappear when the container is replaced. With a named volume mounted at `/app/models` (as above), Docker copies the image's committed `m5-ca1-foods` models into the empty volume on first start, and own-data models persist after that.
   Caveat: the copy happens only while the volume is empty, so after releasing a new Reference version, copy its folder into the volume yourself.
+- Build the image from a Linux checkout, or a Windows checkout that has `.gitattributes`. Otherwise the image (and the volume it fills) gets `model.txt` files with CRLF line endings, which LightGBM can't parse.
 - Run one service process. Training jobs are kept in memory and run one at a time, and several processes would each have their own job table.
 - Health check: `GET /internal/v1/health` (it lists the loaded model versions).
 
@@ -71,6 +72,7 @@ Versioning: a feature-schema change is **major**; retraining or a capability cha
 | Every series returns `TOO_MANY_GAPS` | The history doesn't reach the as-of date, or zeros were sent as `null`/omitted. Send explicit `units: 0` for real zero-sales days |
 | `demandClass` is always `INSUFFICIENT_DATA` | Only a short history was sent. Send up to 365 days |
 | Training job `JOB_NOT_FOUND` after a deploy | Jobs live in memory; resubmit |
+| Every request dies, or `pytest` stops partway through `test_service.py` with no error (exit code 127 on Windows); the log shows `[LightGBM] [Fatal] Model format error, expect a tree here` | The `model.txt` files have CRLF line endings. Git for Windows (`core.autocrlf=true`) did this to checkouts made before `.gitattributes` marked `models/` and `tests/fixtures/` as binary. Fix: `git pull`, delete the `model.txt` files under `models/`, then `git checkout -- models`. A Docker `models` volume filled from such a checkout keeps the bad copies: convert them in place or recreate the volume (the backend's `setup-local.ps1` does both checks) |
 | Full-data tests differ in the 4th decimal | Usually a different LightGBM version or thread count. Pin `lightgbm` to the version recorded in `metadata.json` |
 | Out of memory during release | Needs about 2.3 GB free; close other programs |
 | `pandas`/`pyarrow` import errors | `pip install -r requirements.txt` inside the project's virtual environment |

@@ -340,6 +340,10 @@ Activate the project environment and run `pip install -r requirements.txt` again
 
 The pooled notebook is the heaviest. Close other memory-hungry programs, restart the kernel, and run it from the top. For complete-dataset processing, use `scripts/preprocess_m5.py`, which works in batches; reduce `--batch-size` to lower its peak memory.
 
+**The ML service or the tests die loading a model (`Model format error, expect a tree here`)**
+
+The committed `model.txt` files were checked out with Windows (CRLF) line endings. `.gitattributes` now prevents this; in an older checkout, delete the `model.txt` files under `models/` and run `git checkout -- models`. See `docs/operations.md` → Troubleshooting.
+
 **Parquet support is unavailable**
 
 Install the project requirements so `pyarrow` is present in the active Python environment.

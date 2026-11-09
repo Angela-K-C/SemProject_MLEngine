@@ -273,9 +273,22 @@ The artifacts total about 2.5 MB, so they are **committed to Git** (a change fro
 4. **Recursion.** For day *h* = 1 … *H*: build features for target day *a + h* with the same `build_feature_frame` used in training, predict, clip at zero, and write the prediction into the matrix, so day *h + 1*'s lags and rolling windows see it.
 5. **Categorical alignment.** Before prediction, every categorical column is re-cast to the exact training levels stored in `metadata.json`.
 
-**Baselines** (`models/baselines.py`) work on the same matrix:
-- `naive_last_value` repeats the last *recorded* value. This equals the notebook's `sales_lag_1` baseline for day 1.
+**Baselines** (`models/baselines.py`) work on the same matrix, need no model, and are computed for every series on every request, including `includeAi: false` requests and series where the AI fails:
+- `naive_last_value` repeats the last *recorded* value. This equals the notebook's `sales_lag_1` baseline for day 1 whenever the as-of day is recorded.
 - `seasonal_naive_7` repeats the last observed week.
+
+#### The simple forecast, exactly
+
+The app calls `naive_last_value` the **simple forecast** ("Same as last day"). It is what a shop sees whenever the AI isn't used: before the shop has a model, when its model failed the gate, and for any product the AI can't forecast (`INSUFFICIENT_HISTORY`, `TOO_MANY_GAPS`).
+
+- **Rule.** Find the series' most recent recorded day on or before the as-of date (a non-NaN cell; a recorded 0 counts). Every forecast day, 1 to *H*, gets that day's units. Example: last recorded day 12 units, *H* = 7: the forecast is 12 on each of the 7 days, 84 in total.
+- **Unrecorded days are skipped,** not treated as zero. If the as-of day itself is unrecorded (for example, the shop was closed), the value comes from the latest recorded day before it.
+- **Window.** The service keeps at most `MAX_HISTORY_DAYS` = 400 days before the as-of date (the backend sends 365). With no recorded day in the window, the value is `null`; in practice the backend refuses such a product first, with "no sales history".
+- **No minimum history.** Unlike the AI (21 recorded days, at most 3 unrecorded in the last 21), one recorded day is enough.
+- **In backtests and the gate** (`own_data.py`, `m5_release.py`), "naive" is the row-wise `sales_lag_1`: the previous calendar day's units. Rows whose previous day is unrecorded are not scored. For a series without gaps this is identical to `naive_last_value` for day 1.
+- **Strengths and limits.** It is the standard forecasting benchmark, transparent and hard to beat one day ahead. It ignores weekly patterns, paydays, holidays, trends and promotions, and it repeats one unusual day across the whole horizon. That gap is what the AI has to close, and the gate makes it prove it does.
+
+`seasonal_naive_7` gives forecast day *h* the units from the matching day of the last 7 calendar days (index `h % 7`), so longer horizons repeat that week. An unrecorded day in that week gives `null` for its weekday. The app only shows it in comparisons.
 
 ---
 

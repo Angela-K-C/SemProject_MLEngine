@@ -121,6 +121,7 @@ The full engineering story is in [`docs/notebook-to-production.md`](docs/noteboo
 | --- | --- | --- |
 | [`RecursiveHorizon_CA1Foods`](notebooks/RecursiveHorizon_CA1Foods.ipynb) | Can the next-day model forecast 7 days by feeding its own predictions back in? | Yes: 7-day RMSE 2.472 vs 3.176 (seasonal naive) and 3.489 (naive). Error grows gently (2.34 → 2.58) with about +4% bias. Horizon 7 enabled. |
 | [`PortableFeatures_CA1Foods`](notebooks/PortableFeatures_CA1Foods.ipynb) | Does the recipe work without M5-specific inputs (IDs, US events, SNAP)? How much data does a small store need? | Yes: RMSE 2.380 vs 2.377, within 0.2%. Stores with about 4,500+ product-days reliably beat the baseline. |
+| [`PortableFeatures_OnlineRetail`](notebooks/PortableFeatures_OnlineRetail.ipynb) | Does the recipe work for a shop unlike Walmart (UCI Online Retail II: UK gifts and homeware, mostly lumpy demand)? | Yes: 26% lower RMSE than naive on the whole shop; 20-product shops passed the gate in 36 of 40 runs, even with 90 days. Absolute accuracy is low for lumpy items (WAPE 94%). |
 | [`ErrorByDemandClass_CA1Foods`](notebooks/ErrorByDemandClass_CA1Foods.ipynb) | Does the AI advantage hold under volatile demand? | Yes: 21–29% lower RMSE than naive in every demand class, including erratic and lumpy. The MAE gain is smaller for intermittent items. |
 
 ## Project contents
@@ -134,7 +135,7 @@ The full engineering story is in [`docs/notebook-to-production.md`](docs/noteboo
 | [`notebooks/EnrichedFeatures_CA1Foods.ipynb`](notebooks/EnrichedFeatures_CA1Foods.ipynb) | Tests richer short-horizon sales features and price-dynamics features on the Stage 3 model, as a four-run ablation (baseline, +sales, +price, +both). |
 | [`notebooks/PooledModel_CA_FOODS.ipynb`](notebooks/PooledModel_CA_FOODS.ipynb) | One Tweedie LightGBM trained on all four California stores' FOODS items (5,748 series), with per-store and CA_1 comparisons. |
 | [`notebooks/Dataset_Exploration.ipynb`](notebooks/Dataset_Exploration.ipynb), [`notebooks/Dataset_Exploration_Local.ipynb`](notebooks/Dataset_Exploration_Local.ipynb) | Short dataset-exploration notebooks (Colab and local) with no modelling. |
-| [`notebooks/RecursiveHorizon_CA1Foods.ipynb`](notebooks/RecursiveHorizon_CA1Foods.ipynb), [`PortableFeatures_CA1Foods.ipynb`](notebooks/PortableFeatures_CA1Foods.ipynb), [`ErrorByDemandClass_CA1Foods.ipynb`](notebooks/ErrorByDemandClass_CA1Foods.ipynb) | Stage 8 experiments, built on `mlengine`. |
+| [`notebooks/RecursiveHorizon_CA1Foods.ipynb`](notebooks/RecursiveHorizon_CA1Foods.ipynb), [`PortableFeatures_CA1Foods.ipynb`](notebooks/PortableFeatures_CA1Foods.ipynb), [`ErrorByDemandClass_CA1Foods.ipynb`](notebooks/ErrorByDemandClass_CA1Foods.ipynb), [`PortableFeatures_OnlineRetail.ipynb`](notebooks/PortableFeatures_OnlineRetail.ipynb) | Stage 8 experiments, built on `mlengine`. The last one needs the UCI Online Retail II data in `data/raw/online_retail_ii/` and `openpyxl`. |
 | [`mlengine/`](mlengine/) | The production package: features, training, inference, baselines, metrics, model registry, internal ML service. |
 | [`models/`](models/) | Released model artifacts (`m5-ca1-foods` 1.1.0, 1.1.0-bt, 1.1.0-dev). |
 | [`tests/`](tests/) | Parity, leakage, model and service tests (`pytest`). |

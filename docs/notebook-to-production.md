@@ -341,6 +341,32 @@ The v2.0 design listed three experiments as blockers. All three were built on `m
 - The MAE advantage shrinks for intermittent and lumpy items, where naive still wins on MAE for about a quarter of the items.
 - The per-class breakdown is now stored in every model's backtest summary (`byDemandClass`).
 
+### 9.4 A shop unlike Walmart ([`PortableFeatures_OnlineRetail.ipynb`](../notebooks/PortableFeatures_OnlineRetail.ipynb))
+
+**Question:** §9.2 only simulated small shops from Walmart's own food products. Does the own-data recipe also work for a shop that sells something completely different?
+
+**Setup:** the UCI *Online Retail II* dataset: two years (Dec 2009 to Dec 2011) of a UK online gift and homeware retailer, often selling wholesale packs, closed on Saturdays. 86% of its products are lumpy, against 17% at CA_1 FOODS. Invoice lines become daily units per product; days the shop was closed stay unrecorded, and days it traded without selling a product count as zero. Every run is the production `own_data.train_own_data` with UK holidays and nothing tuned.
+
+| | AI RMSE | Naive RMSE | Gain | AI MAE | Naive MAE |
+| --- | --- | --- | --- | --- | --- |
+| Whole shop, 2,008 products, last year | 36.3 | 49.1 | 26% | 10.2 | 12.5 |
+
+Small shops, 400 runs (10–100 products × 90–365 days × 5 draws × two test windows):
+
+| Products | Pass rate (test ends 9 Dec 2011) | Pass rate (test ends 30 Sep 2011) |
+| --- | --- | --- |
+| 10 | 85% | 75% |
+| 20 | 85% | 95% |
+| 25 | 100% | 95% |
+| 50 and 100 | 100% | 100% |
+
+**Outcome:**
+- The recipe transfers to an unrelated shop with the same relative gain as on Walmart (26% RMSE). 36 of 40 twenty-product runs passed the gate.
+- Even 90 days of history passed in every run, so the eligibility rules (120 days, 4,500 product-days) look conservative for a shop like this one. Part of the reason may be that "same as last day" is a weak forecast for lumpy wholesale orders.
+- Absolute accuracy is low: the whole-shop WAPE is 94% (61% on Walmart). Beating the baseline doesn't make day-level forecasts of lumpy products precise.
+
+**Changes made:** none yet. The finding supports reviewing `OWN_DATA_ELIGIBILITY` with more datasets, rather than changing it on one.
+
 ---
 
 ## 10. Own-data models: retraining the recipe per business
@@ -395,7 +421,7 @@ Endpoints are documented in [`docs/ml-service-api.md`](ml-service-api.md). Real 
 ## 13. Known limitations and future work
 
 **Limitations:**
-- **Scope.** The model is validated on one store and one dense category (FOODS). HOUSEHOLD and HOBBIES are more intermittent and untested.
+- **Scope.** The Reference model is validated on one store and one dense category (FOODS). The own-data recipe has also been tested on one unrelated shop (§9.4), but two datasets are still a small sample.
 - **Point forecasts only.** There are no prediction intervals. Quantile LightGBM is a candidate.
 - **Recursion bias.** Days 2–7 run about 4% high. A direct multi-horizon model would avoid this.
 - **Short backtests.** Per-product backtests are only 28 days, so they are noisy. The app labels them as small samples.

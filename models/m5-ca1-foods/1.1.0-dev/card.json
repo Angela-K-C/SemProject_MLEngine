@@ -1,0 +1,60 @@
+{
+  "title": "Demand model: LightGBM (Tweedie)",
+  "model": "m5-ca1-foods@1.1.0-dev",
+  "trainedOn": {
+    "data": "M5 Forecasting \u2013 Accuracy (Walmart), store CA_1, FOODS category",
+    "products": 1437,
+    "startDate": "2011-02-19",
+    "endDate": "2016-03-27",
+    "source": "https://www.kaggle.com/competitions/m5-forecasting-accuracy"
+  },
+  "predicts": "Expected units sold per product per day.",
+  "horizonDays": [
+    1
+  ],
+  "inputsPlainLanguage": [
+    "Sales over the last 1, 7, 14 and 21 days",
+    "Average and variability of sales over the last 3, 7 and 14 days",
+    "Day of week, day of month, month and year",
+    "US holidays and events, and SNAP food-assistance days in California",
+    "The product's price and how long it has been on sale"
+  ],
+  "backtest": {
+    "window": {
+      "startDay": 1886,
+      "endDay": 1913,
+      "startDate": "2016-03-28",
+      "endDate": "2016-04-24"
+    },
+    "series": "all CA_1 FOODS items",
+    "modelVersion": "m5-ca1-foods@1.1.0-dev",
+    "oneStepAhead": true,
+    "ai": {
+      "n": 40236,
+      "mae": 1.3085459156820543,
+      "rmse": 2.3554779780895254,
+      "wape": 0.6218483188853301
+    },
+    "naive_last_value": {
+      "n": 40236,
+      "mae": 1.6237449050601451,
+      "rmse": 3.193852050980297,
+      "wape": 0.7716374545282751
+    },
+    "seasonal_naive_7": {
+      "n": 40236,
+      "mae": 1.6745203300526892,
+      "rmse": 3.2753708917581226,
+      "wape": 0.7957669957953418
+    }
+  },
+  "horizonAccuracy": null,
+  "limitations": [
+    "Validated on grocery (FOODS) products in one store only.",
+    "Less precise for products that sell on only some days (intermittent demand).",
+    "Accuracy falls slowly with distance: days 2\u20137 are forecast from the model's own earlier predictions and run about 4% high on average. Beyond 7 days forecasts are experimental.",
+    "Gives a single expected value, with no uncertainty range.",
+    "Only valid for products in the M5 CA_1 FOODS catalogue."
+  ],
+  "note": "Development model: used for replays with as-of dates from 2016-03-27 to 2016-04-23."
+}

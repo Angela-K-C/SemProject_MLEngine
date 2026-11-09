@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlengine"
+dynamic = ["version"]
+description = "Retail demand forecasting engine: Tweedie LightGBM features, models, evaluation and internal ML service"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26,<3.0",
+    "pandas>=2.2,<3.0",
+    "pyarrow>=18,<25",
+    "lightgbm>=4.5,<5.0",
+    "scikit-learn>=1.5,<2.0",  # LGBMRegressor (training) needs it
+    "holidays>=0.50",
+]
+
+[project.optional-dependencies]
+service = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "pydantic>=2.6"]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+mlengine = "mlengine.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "mlengine.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["mlengine*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests", "."]
+filterwarnings = ["ignore::DeprecationWarning:starlette.*", "ignore:Using `httpx`:DeprecationWarning"]
